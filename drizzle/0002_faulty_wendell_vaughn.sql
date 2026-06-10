@@ -1,0 +1,1 @@
+ALTER TABLE "helpdesk_requests" ADD COLUMN "severity" integer;

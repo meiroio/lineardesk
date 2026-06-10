@@ -84,14 +84,17 @@ export function createApiApp(dependencies?: ApiDependencies) {
         throw error
       }
 
+      const { severity, ...issueInput } = input
       const linearIssue = await deps.linear.createHelpdeskIssue({
-        ...input,
+        ...issueInput,
         requesterEmail: session.user.email,
+        priority: severity,
       })
       const record = await deps.repo.createRequest({
         requesterUserId: session.user.id,
         requesterEmail: session.user.email,
-        ...input,
+        ...issueInput,
+        severity,
         linearIssue,
         linearTeamId: deps.config.linear.teamId,
       })

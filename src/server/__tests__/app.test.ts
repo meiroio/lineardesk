@@ -47,6 +47,7 @@ function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
     linearStateId: "state-id",
     linearStateName: "Triage",
     linearStateType: "triage",
+    severity: 3,
     linearDetailsCommentId: "comment-id",
     linearDetailsCommentedAt: new Date("2026-01-01T00:00:00.000Z"),
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -82,6 +83,7 @@ describe("createApiApp", () => {
         createHelpdeskIssueDetailsComment: vi.fn(),
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
+        uploadAsset: vi.fn(),
       },
       auth: {
         handler: authHandler,
@@ -117,6 +119,7 @@ describe("createApiApp", () => {
       createHelpdeskIssueDetailsComment: vi.fn(),
       createIssueComment: vi.fn(),
       listIssueComments: vi.fn(async () => []),
+      uploadAsset: vi.fn(),
     }
     const app = createApiApp({
       config,
@@ -131,7 +134,10 @@ describe("createApiApp", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title: " Cannot sign in ",
-          description: " Google sign-in fails after redirect. ",
+          expectedBehaviour: " Google sign-in succeeds. ",
+          currentBehaviour: " Google sign-in fails after redirect. ",
+          stepsToReproduce: " 1. Click sign in 2. Pick account ",
+          severity: "high",
         }),
       })
     )
@@ -145,8 +151,12 @@ describe("createApiApp", () => {
     })
     expect(linear.createHelpdeskIssue).toHaveBeenCalledWith({
       title: "Cannot sign in",
-      description: "Google sign-in fails after redirect.",
+      description:
+        "Expected behaviour\nGoogle sign-in succeeds.\n\n" +
+        "Current behaviour\nGoogle sign-in fails after redirect.\n\n" +
+        "Steps to reproduce\n1. Click sign in 2. Pick account",
       requesterEmail: "person@example.com",
+      priority: 2,
     })
     expect(repo.createRequest).toHaveBeenCalled()
   })
@@ -160,6 +170,7 @@ describe("createApiApp", () => {
         createHelpdeskIssueDetailsComment: vi.fn(),
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
+        uploadAsset: vi.fn(),
       },
       auth: {
         getSession: vi.fn(async () => ({
@@ -186,6 +197,7 @@ describe("createApiApp", () => {
         createHelpdeskIssueDetailsComment: vi.fn(),
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
+        uploadAsset: vi.fn(),
       },
       auth: { getSession: vi.fn(async () => session) },
       verifyWebhook: vi.fn(async () => ({
@@ -226,6 +238,7 @@ describe("createApiApp", () => {
           createdAt: new Date("2026-01-01T00:30:00.000Z"),
         },
       ]),
+      uploadAsset: vi.fn(),
     }
     const app = createApiApp({
       config,
@@ -267,6 +280,7 @@ describe("createApiApp", () => {
         createdAt: new Date("2026-01-01T00:45:00.000Z"),
       })),
       listIssueComments: vi.fn(async () => []),
+      uploadAsset: vi.fn(),
     }
     const app = createApiApp({
       config,

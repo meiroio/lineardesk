@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm"
 import {
   boolean,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -105,6 +106,7 @@ export const helpdeskRequests = pgTable(
     linearStateId: text("linear_state_id").notNull(),
     linearStateName: text("linear_state_name").notNull(),
     linearStateType: text("linear_state_type").notNull(),
+    severity: integer("severity"),
     linearDetailsCommentId: text("linear_details_comment_id"),
     linearDetailsCommentedAt: timestamp("linear_details_commented_at", {
       withTimezone: true,

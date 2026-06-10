@@ -17,6 +17,7 @@ function makeRequest(overrides: Partial<RequestRecord> = {}): RequestRecord {
     linearStateId: "state-id",
     linearStateName: "Triage",
     linearStateType: "triage",
+    severity: 3,
     linearDetailsCommentId: null,
     linearDetailsCommentedAt: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -50,6 +51,7 @@ describe("backfillMissingDetailsComments", () => {
       })),
       createIssueComment: vi.fn(),
       listIssueComments: vi.fn(async () => []),
+      uploadAsset: vi.fn(),
     }
 
     const result = await backfillMissingDetailsComments({

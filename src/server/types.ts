@@ -103,6 +103,7 @@ export type RequestRecord = {
   linearStateId: string
   linearStateName: string
   linearStateType: string
+  severity: number | null
   linearDetailsCommentId: string | null
   linearDetailsCommentedAt: Date | null
   createdAt: Date
@@ -115,6 +116,7 @@ export type CreateRequestRecordInput = {
   requesterEmail: string
   title: string
   description: string
+  severity: number
   linearIssue: LinearIssueSnapshot
   linearTeamId: string
 }
