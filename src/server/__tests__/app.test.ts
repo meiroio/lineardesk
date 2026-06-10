@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest"
 import { createApiApp } from "../app"
 import type {
   AppConfig,
+  AuthBridge,
   AuthSession,
   HelpdeskRepository,
+  LinearGateway,
   RequestRecord,
 } from "../types"
 
@@ -310,5 +312,90 @@ describe("createApiApp", () => {
       issueId: "linear-issue-id",
       body: "Requester: person@example.com\n\nIs it still broken?",
     })
+  })
+})
+
+describe("POST /api/uploads", () => {
+  function makeApp(overrides?: {
+    uploadAsset?: LinearGateway["uploadAsset"]
+    getSession?: AuthBridge["getSession"]
+  }) {
+    const linear = {
+      createHelpdeskIssue: vi.fn(),
+      createHelpdeskIssueDetailsComment: vi.fn(),
+      createIssueComment: vi.fn(),
+      listIssueComments: vi.fn(async () => []),
+      uploadAsset:
+        overrides?.uploadAsset ??
+        vi.fn(async () => ({ assetUrl: "https://uploads.linear.app/abc.png" })),
+    }
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear,
+      auth: { getSession: overrides?.getSession ?? vi.fn(async () => session) },
+    })
+    return { app, linear }
+  }
+
+  it("uploads a pasted image to Linear and returns the asset URL", async () => {
+    const { app, linear } = makeApp()
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/uploads", {
+        method: "POST",
+        headers: { "content-type": "image/png", "x-filename": "shot.png" },
+        body: new Uint8Array([1, 2, 3, 4]),
+      })
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toEqual({
+      assetUrl: "https://uploads.linear.app/abc.png",
+      filename: "shot.png",
+    })
+    expect(linear.uploadAsset).toHaveBeenCalled()
+  })
+
+  it("rejects non-image content types", async () => {
+    const { app } = makeApp()
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/uploads", {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: new Uint8Array([1, 2, 3]),
+      })
+    )
+
+    expect(response.status).toBe(400)
+  })
+
+  it("rejects uploads over the size limit", async () => {
+    const { app } = makeApp()
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/uploads", {
+        method: "POST",
+        headers: { "content-type": "image/png" },
+        body: new Uint8Array(20 * 1024 * 1024 + 1),
+      })
+    )
+
+    expect(response.status).toBe(413)
+  })
+
+  it("rejects unauthenticated uploads", async () => {
+    const { app } = makeApp({ getSession: vi.fn(async () => null) })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/uploads", {
+        method: "POST",
+        headers: { "content-type": "image/png" },
+        body: new Uint8Array([1, 2, 3]),
+      })
+    )
+
+    expect(response.status).toBe(401)
   })
 })
