@@ -3,7 +3,9 @@ import { RiExternalLinkLine } from "@remixicon/react"
 import type { FormEvent } from "react"
 import { useCallback, useEffect, useState } from "react"
 
+import { DescriptionBody } from "@/components/description-body"
 import { PageShell } from "@/components/page-shell"
+import { SeverityBadge } from "@/components/severity-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -139,12 +141,15 @@ function RequestDetail() {
       title={request.title}
       description={request.linearIdentifier}
       actions={
-        <Badge
-          variant="outline"
-          className={statusClassName(request.linearStateType)}
-        >
-          {request.linearStateName}
-        </Badge>
+        <>
+          <SeverityBadge priority={request.severity} />
+          <Badge
+            variant="outline"
+            className={statusClassName(request.linearStateType)}
+          >
+            {request.linearStateName}
+          </Badge>
+        </>
       }
     >
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -154,9 +159,7 @@ function RequestDetail() {
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
-                {request.description}
-              </p>
+              <DescriptionBody text={request.description} />
             </CardContent>
           </Card>
 

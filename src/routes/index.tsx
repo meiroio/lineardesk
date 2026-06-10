@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from "react"
 
 import { PageShell } from "@/components/page-shell"
+import { SeverityBadge } from "@/components/severity-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -136,6 +137,10 @@ function Dashboard() {
                       {formatDateTime(request.updatedAt)}
                     </span>
                   </span>
+                  <SeverityBadge
+                    priority={request.severity}
+                    className="hidden shrink-0 sm:inline-flex"
+                  />
                   <Badge
                     variant="outline"
                     className={`shrink-0 ${statusClassName(request.linearStateType)}`}
