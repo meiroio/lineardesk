@@ -9,6 +9,7 @@ export type PortalRequest = {
   linearStateId: string
   linearStateName: string
   linearStateType: string
+  severity: number | null
   linearDetailsCommentId: string | null
   linearDetailsCommentedAt: string | null
   createdAt: string
@@ -53,6 +54,22 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   })
 
   return readJson<T>(response)
+}
+
+export async function uploadImage(
+  file: File
+): Promise<{ assetUrl: string; filename: string }> {
+  const response = await fetch("/api/uploads", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "content-type": file.type,
+      "x-filename": encodeURIComponent(file.name),
+    },
+    body: file,
+  })
+
+  return readJson<{ assetUrl: string; filename: string }>(response)
 }
 
 async function readJson<T>(response: Response): Promise<T> {
