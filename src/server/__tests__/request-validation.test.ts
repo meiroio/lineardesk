@@ -7,37 +7,44 @@ import {
 } from "../request-validation"
 
 describe("parseCreateRequestInput", () => {
-  it("trims valid input", () => {
-    expect(
-      parseCreateRequestInput({
-        title: "  Login is broken  ",
-        description: "  I cannot sign in with Google from Chrome.  ",
-      })
-    ).toEqual({
+  const valid = {
+    title: "  Login is broken  ",
+    expectedBehaviour: "  Google sign-in succeeds.  ",
+    currentBehaviour: "  Sign-in fails after redirect.  ",
+    stepsToReproduce: "  1. Click sign in 2. Pick account  ",
+    severity: "High",
+  }
+
+  it("trims, merges sections, and maps severity to a priority integer", () => {
+    expect(parseCreateRequestInput(valid)).toEqual({
       title: "Login is broken",
-      description: "I cannot sign in with Google from Chrome.",
+      description:
+        "Expected behaviour\nGoogle sign-in succeeds.\n\n" +
+        "Current behaviour\nSign-in fails after redirect.\n\n" +
+        "Steps to reproduce\n1. Click sign in 2. Pick account",
+      severity: 2,
     })
   })
 
-  it("rejects too-short or missing fields", () => {
+  it("rejects missing section fields", () => {
     expect(() =>
-      parseCreateRequestInput({ title: "Hi", description: "short" })
+      parseCreateRequestInput({ ...valid, currentBehaviour: "   " })
+    ).toThrow(RequestValidationError)
+  })
+
+  it("rejects an unknown severity", () => {
+    expect(() =>
+      parseCreateRequestInput({ ...valid, severity: "blocker" })
     ).toThrow(RequestValidationError)
   })
 
   it("rejects fields beyond the public API limits", () => {
     expect(() =>
-      parseCreateRequestInput({
-        title: "x".repeat(161),
-        description: "Valid description text",
-      })
+      parseCreateRequestInput({ ...valid, title: "x".repeat(161) })
     ).toThrow(RequestValidationError)
 
     expect(() =>
-      parseCreateRequestInput({
-        title: "Valid title",
-        description: "x".repeat(5001),
-      })
+      parseCreateRequestInput({ ...valid, expectedBehaviour: "x".repeat(5001) })
     ).toThrow(RequestValidationError)
   })
 })
