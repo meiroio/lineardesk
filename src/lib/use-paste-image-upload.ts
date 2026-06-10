@@ -21,17 +21,22 @@ export function usePasteImageUpload(
 
       event.preventDefault()
       const textarea = event.currentTarget
-      // lib.dom types selectionStart/End as non-null for textarea, but guard
-      // defensively in case the value is ever cleared.
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      const start = textarea.selectionStart ?? textarea.value.length
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      const end = textarea.selectionEnd ?? start
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
 
-      for (const file of files) {
+      const uploads = files.map((file) => {
         const id = (counter.current += 1)
-        const token = `![uploading ${file.name} #${id}…]()`
-        setValue((prev) => prev.slice(0, start) + token + prev.slice(end))
+        return { file, token: `![uploading ${file.name} #${id}…]()` }
+      })
+
+      setValue(
+        (prev) =>
+          prev.slice(0, start) +
+          uploads.map((upload) => upload.token).join("") +
+          prev.slice(end)
+      )
+
+      for (const { file, token } of uploads) {
         setPending((count) => count + 1)
 
         void uploadImage(file)
