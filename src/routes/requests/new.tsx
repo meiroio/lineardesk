@@ -59,6 +59,7 @@ function NewRequest() {
             onSubmit={(event) => {
               event.preventDefault()
               setError(null)
+              setUploadError(null)
               setSubmitting(true)
               void apiPost<{ request: PortalRequest }>("/api/requests", {
                 title,
@@ -108,7 +109,7 @@ function NewRequest() {
                     className={cn(
                       "cursor-pointer rounded-4xl border border-border px-3 py-1 text-sm font-medium transition-colors",
                       "has-[:checked]:border-transparent has-[:checked]:bg-primary has-[:checked]:text-primary-foreground",
-                      "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50"
+                      "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background"
                     )}
                   >
                     <input
