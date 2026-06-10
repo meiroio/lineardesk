@@ -57,7 +57,7 @@ function sanitizeFilename(value: string | null): string {
     decoded = value
   }
   const base = decoded.split(/[\\/]/).pop() ?? "image"
-  const cleaned = base.replace(/[^\w.\-]+/g, "_").slice(0, 100)
+  const cleaned = base.replace(/[^\w.-]+/g, "_").slice(0, 100)
   return cleaned || "image"
 }
 
