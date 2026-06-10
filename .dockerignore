@@ -1,0 +1,11 @@
+.git
+.tanstack
+node_modules
+drizzle
+.output
+dist
+.env
+.env.*
+!.env.example
+*.log
+coverage
