@@ -41,6 +41,17 @@ export type CreateHelpdeskIssueInput = {
   title: string
   description: string
   requesterEmail: string
+  priority?: number
+}
+
+export type UploadAssetInput = {
+  contentType: string
+  filename: string
+  bytes: Uint8Array
+}
+
+export type UploadAssetResult = {
+  assetUrl: string
 }
 
 export type LinearGateway = {
@@ -54,6 +65,7 @@ export type LinearGateway = {
     input: CreateIssueCommentInput
   ) => Promise<LinearIssueCommentSnapshot>
   listIssueComments: (issueId: string) => Promise<LinearIssueCommentSnapshot[]>
+  uploadAsset: (input: UploadAssetInput) => Promise<UploadAssetResult>
 }
 
 export type HelpdeskIssueDetailsCommentInput = {

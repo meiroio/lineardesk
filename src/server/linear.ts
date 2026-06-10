@@ -9,6 +9,8 @@ import type {
   LinearCommentSnapshot,
   LinearIssueCommentSnapshot,
   LinearIssueSnapshot,
+  UploadAssetInput,
+  UploadAssetResult,
 } from "./types"
 
 type WorkflowStateCandidate = {
@@ -37,6 +39,7 @@ type LinearIssueCreateInput = {
   teamId: string
   stateId: string
   labelIds?: string[]
+  priority?: number
 }
 type LinearCommentCreateInput = {
   issueId: string
@@ -108,6 +111,7 @@ export function buildLinearIssueInput(input: {
   teamId: string
   stateId: string
   labelId: string | null
+  priority?: number
 }): LinearIssueCreateInput {
   const issueInput: LinearIssueCreateInput = {
     title: input.title,
@@ -117,6 +121,7 @@ export function buildLinearIssueInput(input: {
   }
 
   if (input.labelId) issueInput.labelIds = [input.labelId]
+  if (typeof input.priority === "number") issueInput.priority = input.priority
 
   return issueInput
 }
@@ -267,6 +272,36 @@ class LinearSdkGateway implements LinearGateway {
       authorName: "Desk",
       createdAt: new Date(),
     }
+  }
+
+  async uploadAsset(input: UploadAssetInput): Promise<UploadAssetResult> {
+    const payload = await this.client.fileUpload(
+      input.contentType,
+      input.filename,
+      input.bytes.byteLength
+    )
+    const uploadFile = payload.uploadFile
+    if (!uploadFile) {
+      throw new Error("Linear file upload could not be prepared")
+    }
+
+    const headers = new Headers({ "content-type": input.contentType })
+    for (const header of uploadFile.headers) {
+      headers.set(header.key, header.value)
+    }
+
+    const response = await fetch(uploadFile.uploadUrl, {
+      method: "PUT",
+      headers,
+      body: input.bytes as BodyInit,
+    })
+    if (!response.ok) {
+      throw new Error(
+        `Linear asset upload failed with status ${response.status}`
+      )
+    }
+
+    return { assetUrl: uploadFile.assetUrl }
   }
 
   private async toIssueCommentSnapshot(comment: {

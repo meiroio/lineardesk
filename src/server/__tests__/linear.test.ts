@@ -44,6 +44,33 @@ describe("buildLinearIssueInput", () => {
 
     expect(input).not.toHaveProperty("labelIds")
   })
+
+  it("sets the Linear priority when provided", () => {
+    const input = buildLinearIssueInput({
+      title: "Cannot export invoices",
+      description: "The export button spins forever.",
+      requesterEmail: "user@example.com",
+      teamId: "team-id",
+      stateId: "state-id",
+      labelId: "label-id",
+      priority: 2,
+    })
+
+    expect(input.priority).toBe(2)
+  })
+
+  it("omits priority when not provided", () => {
+    const input = buildLinearIssueInput({
+      title: "Question",
+      description: "How do I invite a teammate?",
+      requesterEmail: "user@example.com",
+      teamId: "team-id",
+      stateId: "state-id",
+      labelId: null,
+    })
+
+    expect(input).not.toHaveProperty("priority")
+  })
 })
 
 describe("buildLinearIssueCommentInput", () => {
