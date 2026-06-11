@@ -1,12 +1,15 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-const SEVERITY: Record<number, { label: string; dot: string }> = {
-  1: { label: "Urgent", dot: "bg-destructive" },
-  2: { label: "High", dot: "bg-status-triage" },
-  3: { label: "Medium", dot: "bg-foreground/40" },
-  4: { label: "Low", dot: "bg-muted-foreground/40" },
-}
+export const SEVERITY_LEVELS = [
+  { priority: 1, label: "Urgent", dot: "bg-destructive" },
+  { priority: 2, label: "High", dot: "bg-status-triage" },
+  { priority: 3, label: "Medium", dot: "bg-foreground/40" },
+  { priority: 4, label: "Low", dot: "bg-muted-foreground/40" },
+] as const
+
+const SEVERITY: Record<number, (typeof SEVERITY_LEVELS)[number]> =
+  Object.fromEntries(SEVERITY_LEVELS.map((level) => [level.priority, level]))
 
 export function SeverityBadge({
   priority,
