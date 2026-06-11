@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 type PageShellProps = {
   title: string
   description?: string
-  eyebrow?: string
+  eyebrow?: React.ReactNode
   /** When set, renders a back-to-requests row above the header. */
   backLabel?: string
   actions?: React.ReactNode

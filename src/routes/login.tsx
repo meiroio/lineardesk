@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { RiGoogleFill } from "@remixicon/react"
 
+import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -16,8 +17,9 @@ export const Route = createFileRoute("/login")({ component: Login })
 
 function Login() {
   return (
-    <main className="relative flex min-h-svh items-center justify-center bg-background px-4 py-10">
+    <main className="relative flex min-h-svh flex-col items-center justify-center gap-6 bg-background px-4 py-10">
       <ThemeToggle className="absolute top-4 right-4" />
+      <Logo className="size-12" />
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Sign in to LinearDesk</CardTitle>

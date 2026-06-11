@@ -8,6 +8,7 @@ import {
 } from "@remixicon/react"
 import { useEffect, useState } from "react"
 
+import { BrandMark } from "@/components/logo"
 import { PageShell } from "@/components/page-shell"
 import { SeverityBadge } from "@/components/severity-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -68,7 +69,7 @@ function Dashboard() {
 
   return (
     <PageShell
-      eyebrow="LinearDesk"
+      eyebrow={<BrandMark />}
       title="Requests"
       description="Track the current Linear status for requests you submitted."
       actions={
