@@ -1,7 +1,8 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RiAddLine, RiExternalLinkLine } from "@remixicon/react"
 import type { FormEvent } from "react"
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { DescriptionBody } from "@/components/description-body"
 import { PageShell } from "@/components/page-shell"
@@ -23,11 +24,12 @@ import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest, RequestResolution } from "@/lib/helpdesk-api"
 import {
   ApiError,
-  apiGet,
   apiPost,
   closeRequest,
+  fetchRequest,
   formatCommentCount,
   formatDateTime,
+  requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
 import { requirePortalAuth } from "@/lib/route-guards"
@@ -39,46 +41,40 @@ export const Route = createFileRoute("/requests/$requestId")({
 
 function RequestDetail() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { requestId } = Route.useParams()
-  const [request, setRequest] = useState<PortalRequest | null>(null)
-  const [status, setStatus] = useState<
-    "loading" | "ready" | "not-found" | "error"
-  >("loading")
   const [replyBody, setReplyBody] = useState("")
   const [replyError, setReplyError] = useState<string | null>(null)
   const [replying, setReplying] = useState(false)
   const [closing, setClosing] = useState(false)
   const [closeBusy, setCloseBusy] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
+
+  // The record (title, description, severity, dates, status) already arrived
+  // with the list, so seed it as placeholder data: the page renders instantly
+  // and only the comments (a Linear API call) stream in afterwards.
+  const {
+    data: request,
+    status: queryStatus,
+    error,
+  } = useQuery({
+    queryKey: requestKeys.detail(requestId),
+    queryFn: () => fetchRequest(requestId),
+    placeholderData: () =>
+      queryClient
+        .getQueryData<PortalRequest[]>(requestKeys.list)
+        ?.find((item) => item.id === requestId),
+    staleTime: 0,
+  })
+
+  const isAuthError = error instanceof ApiError && error.status === 401
+  const isNotFound = error instanceof ApiError && error.status === 404
   const comments = request?.comments ?? []
-  const fetchRequest = useCallback(() => {
-    return apiGet<{ request: PortalRequest }>(`/api/requests/${requestId}`)
-  }, [requestId])
+  const commentsLoading = request != null && request.comments === undefined
 
   useEffect(() => {
-    let active = true
-
-    setStatus("loading")
-    setReplyError(null)
-
-    void fetchRequest()
-      .then((data) => {
-        if (!active) return
-        setRequest(data.request)
-        setStatus("ready")
-      })
-      .catch((error) => {
-        if (!active) return
-        if (error instanceof ApiError && error.status === 401)
-          void navigate({ to: "/login" })
-        else if (error instanceof ApiError && error.status === 404)
-          setStatus("not-found")
-        else setStatus("error")
-      })
-    return () => {
-      active = false
-    }
-  }, [fetchRequest, navigate])
+    if (isAuthError) void navigate({ to: "/login" })
+  }, [isAuthError, navigate])
 
   async function handleReplySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -95,12 +91,11 @@ function RequestDetail() {
     try {
       await apiPost(`/api/requests/${requestId}/comments`, { body })
       setReplyBody("")
-
-      const data = await fetchRequest()
-      setRequest(data.request)
-      setStatus("ready")
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
+      await queryClient.invalidateQueries({
+        queryKey: requestKeys.detail(requestId),
+      })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
         void navigate({ to: "/login" })
         return
       }
@@ -117,10 +112,17 @@ function RequestDetail() {
 
     try {
       const data = await closeRequest(requestId, resolution)
-      setRequest(data.request)
+      queryClient.setQueryData<PortalRequest>(
+        requestKeys.detail(requestId),
+        (old) =>
+          old
+            ? { ...old, ...data.request, comments: old.comments }
+            : data.request
+      )
+      void queryClient.invalidateQueries({ queryKey: requestKeys.list })
       setClosing(false)
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
         void navigate({ to: "/login" })
         return
       }
@@ -131,15 +133,7 @@ function RequestDetail() {
     }
   }
 
-  if (status === "loading") {
-    return (
-      <PageShell backLabel="Requests" title="Loading request…">
-        <RequestDetailSkeleton />
-      </PageShell>
-    )
-  }
-
-  if (status === "not-found") {
+  if (isNotFound) {
     return (
       <PageShell
         backLabel="Requests"
@@ -149,13 +143,29 @@ function RequestDetail() {
     )
   }
 
-  if (status === "error" || !request) {
+  if (isAuthError) {
+    return (
+      <PageShell backLabel="Requests" title="Loading request…">
+        <RequestDetailSkeleton />
+      </PageShell>
+    )
+  }
+
+  if (queryStatus === "error" && !request) {
     return (
       <PageShell
         backLabel="Requests"
         title="Request unavailable"
         description="Try again after a moment."
       />
+    )
+  }
+
+  if (!request) {
+    return (
+      <PageShell backLabel="Requests" title="Loading request…">
+        <RequestDetailSkeleton />
+      </PageShell>
     )
   }
 
@@ -202,11 +212,25 @@ function RequestDetail() {
             <CardHeader>
               <CardTitle>Activity</CardTitle>
               <CardDescription>
-                {formatCommentCount(comments.length)}
+                {commentsLoading
+                  ? "Loading activity…"
+                  : formatCommentCount(comments.length)}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {comments.length > 0 ? (
+              {commentsLoading ? (
+                <div className="flex flex-col gap-5">
+                  {[0, 1].map((row) => (
+                    <div key={row} className="flex gap-3">
+                      <Skeleton className="size-8 rounded-full" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-3 w-32" />
+                        <Skeleton className="h-3 w-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : comments.length > 0 ? (
                 <ol className="flex flex-col gap-5">
                   {comments.map((comment) => (
                     <li key={comment.id} className="flex gap-3">

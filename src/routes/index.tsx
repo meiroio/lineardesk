@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -24,11 +25,12 @@ import {
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { authClient } from "@/lib/auth-client"
-import type { PortalRequest } from "@/lib/helpdesk-api"
 import {
   ApiError,
-  apiGet,
+  fetchRequest,
+  fetchRequests,
   formatDateTime,
+  requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
 import { requirePortalAuth } from "@/lib/route-guards"
@@ -42,33 +44,37 @@ const PAGE_SIZE = 10
 
 function Dashboard() {
   const navigate = useNavigate()
-  const [requests, setRequests] = useState<PortalRequest[]>([])
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
+  const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
 
+  const {
+    data: requests = [],
+    status: queryStatus,
+    error,
+  } = useQuery({
+    queryKey: requestKeys.list,
+    queryFn: fetchRequests,
+  })
+
+  const isAuthError = error instanceof ApiError && error.status === 401
+
   useEffect(() => {
-    let active = true
+    if (isAuthError) void navigate({ to: "/login" })
+  }, [isAuthError, navigate])
 
-    void apiGet<{ requests: PortalRequest[] }>("/api/requests")
-      .then((data) => {
-        if (!active) return
-        setRequests(data.requests)
-        setStatus("ready")
-      })
-      .catch((error) => {
-        if (!active) return
-        if (error instanceof ApiError && error.status === 401) {
-          void navigate({ to: "/login" })
-          return
-        }
+  const status =
+    queryStatus === "pending" || isAuthError
+      ? "loading"
+      : queryStatus === "error"
+        ? "error"
+        : "ready"
 
-        setStatus("error")
-      })
-
-    return () => {
-      active = false
-    }
-  }, [navigate])
+  const prefetchRequest = (id: string) => {
+    void queryClient.prefetchQuery({
+      queryKey: requestKeys.detail(id),
+      queryFn: () => fetchRequest(id),
+    })
+  }
 
   const pageCount = Math.max(1, Math.ceil(requests.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
@@ -140,6 +146,8 @@ function Dashboard() {
                   <Link
                     to="/requests/$requestId"
                     params={{ requestId: request.id }}
+                    onMouseEnter={() => prefetchRequest(request.id)}
+                    onFocus={() => prefetchRequest(request.id)}
                     className="group flex items-center gap-4 px-5 py-4 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
                   >
                     <span className="min-w-0 flex-1 space-y-0.5">

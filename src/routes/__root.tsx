@@ -1,4 +1,6 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { useState } from "react"
 
 import { themeInitScript } from "@/lib/theme"
 
@@ -50,6 +52,15 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { refetchOnWindowFocus: false, retry: 1 },
+        },
+      })
+  )
+
   return (
     // The theme init script sets the `class`/`color-scheme` on <html> before
     // hydration, so the client intentionally diverges from the SSR markup here.
@@ -58,7 +69,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

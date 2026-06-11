@@ -182,8 +182,10 @@ class LinearSdkGateway implements LinearGateway {
   async listIssueComments(
     issueId: string
   ): Promise<LinearIssueCommentSnapshot[]> {
-    const issue = await this.client.issue(issueId)
-    const comments = await issue.comments({ first: 50 })
+    const comments = await this.client.comments({
+      filter: { issue: { id: { eq: issueId } } },
+      first: 50,
+    })
     const snapshots = await Promise.all(
       comments.nodes.map((comment) => this.toIssueCommentSnapshot(comment))
     )
@@ -275,27 +277,24 @@ class LinearSdkGateway implements LinearGateway {
       name?: string | null
     } | null>
   }): Promise<LinearIssueCommentSnapshot> {
-    let user: { displayName?: string | null; name?: string | null } | null =
-      null
-    if (comment.user) {
+    // Prefer the inline botActor (no extra request); only resolve the user
+    // relation — an additional Linear round-trip per comment — when needed.
+    let authorName =
+      comment.botActor?.userDisplayName || comment.botActor?.name || null
+
+    if (!authorName && comment.user) {
       try {
-        user = await comment.user
+        const user = await comment.user
+        authorName = user?.displayName || user?.name || null
       } catch {
-        user = null
+        authorName = null
       }
     }
-
-    const authorName =
-      user?.displayName ||
-      user?.name ||
-      comment.botActor?.userDisplayName ||
-      comment.botActor?.name ||
-      "Linear"
 
     return {
       id: comment.id,
       body: comment.body,
-      authorName,
+      authorName: authorName || "Linear",
       createdAt: comment.createdAt,
     }
   }

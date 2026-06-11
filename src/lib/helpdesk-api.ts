@@ -83,6 +83,21 @@ export async function closeRequest(
   })
 }
 
+export const requestKeys = {
+  list: ["requests"] as const,
+  detail: (id: string) => ["request", id] as const,
+}
+
+export async function fetchRequests(): Promise<PortalRequest[]> {
+  const data = await apiGet<{ requests: PortalRequest[] }>("/api/requests")
+  return data.requests
+}
+
+export async function fetchRequest(id: string): Promise<PortalRequest> {
+  const data = await apiGet<{ request: PortalRequest }>(`/api/requests/${id}`)
+  return data.request
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null)
   if (!response.ok) {

@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { PageShell } from "@/components/page-shell"
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest } from "@/lib/helpdesk-api"
-import { ApiError, apiPost } from "@/lib/helpdesk-api"
+import { ApiError, apiPost, requestKeys } from "@/lib/helpdesk-api"
 import { requirePortalAuth } from "@/lib/route-guards"
 import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,7 @@ const SEVERITY_OPTIONS = [
 
 function NewRequest() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [title, setTitle] = useState("")
   const [severity, setSeverity] = useState("medium")
   const [expectedBehaviour, setExpectedBehaviour] = useState("")
@@ -68,12 +70,19 @@ function NewRequest() {
                 currentBehaviour,
                 stepsToReproduce,
               })
-                .then(({ request }) =>
-                  navigate({
+                .then(({ request }) => {
+                  queryClient.setQueryData(
+                    requestKeys.detail(request.id),
+                    request
+                  )
+                  void queryClient.invalidateQueries({
+                    queryKey: requestKeys.list,
+                  })
+                  return navigate({
                     to: "/requests/$requestId",
                     params: { requestId: request.id },
                   })
-                )
+                })
                 .catch((requestError) => {
                   if (
                     requestError instanceof ApiError &&
