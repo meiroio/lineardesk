@@ -64,3 +64,7 @@ docker build -t lineardesk .
 ```
 
 The container listens on port `3000` and exposes `/api/health` for readiness/liveness probes.
+
+## License
+
+LinearDesk is **source-available** under the [MIT License with the Commons Clause](LICENSE). You may use, modify, fork, and redistribute it freely — but you may **not sell** it, meaning you may not provide to third parties, for a fee, a product or service whose value derives substantially from this code (including paid hosting/SaaS). See [LICENSE](LICENSE) for the exact terms.
