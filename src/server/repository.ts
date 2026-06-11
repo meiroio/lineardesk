@@ -66,7 +66,12 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .select()
       .from(helpdeskRequests)
       .where(
-        notInArray(helpdeskRequests.linearStateType, ["completed", "canceled"])
+        // Terminal states — mirrors TERMINAL_STATUS_TYPES in lib/helpdesk-api.
+        notInArray(helpdeskRequests.linearStateType, [
+          "completed",
+          "canceled",
+          "duplicate",
+        ])
       )
       .orderBy(desc(helpdeskRequests.updatedAt))
       .limit(limit)

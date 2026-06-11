@@ -142,10 +142,15 @@ export function statusClassName(type: string) {
   }
 }
 
-// Linear's terminal state types — Done (completed), Cancelled and Duplicate
-// (both canceled). Kept as the single source of truth for "is this request
-// finished", used by the list status filter and the detail close affordance.
-export const TERMINAL_STATUS_TYPES = ["completed", "canceled"] as const
+// Linear's terminal state types — Done (completed), Canceled (canceled) and
+// Duplicate (duplicate, its own type). The single source of truth for "is this
+// request finished", used by the list status filter and the detail close
+// affordance; the cron's listOpenRequests query mirrors this set.
+export const TERMINAL_STATUS_TYPES = [
+  "completed",
+  "canceled",
+  "duplicate",
+] as const
 
 export function isDoneStatus(type: string): boolean {
   return (TERMINAL_STATUS_TYPES as readonly string[]).includes(type)
