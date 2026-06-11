@@ -29,6 +29,8 @@ import {
   fetchRequest,
   formatCommentCount,
   formatDateTime,
+  isDoneStatus,
+  LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
@@ -65,6 +67,14 @@ function RequestDetail() {
         .getQueryData<PortalRequest[]>(requestKeys.list)
         ?.find((item) => item.id === requestId),
     staleTime: 0,
+    // Poll while open so webhook-driven status changes (and new Linear
+    // comments) surface without a reload; stop once terminal to avoid
+    // needless Linear API calls. Focus refetch is off globally — enable here.
+    refetchInterval: (query) =>
+      query.state.data && isDoneStatus(query.state.data.linearStateType)
+        ? false
+        : LIVE_REFETCH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   })
 
   const isAuthError = error instanceof ApiError && error.status === 401
@@ -169,7 +179,7 @@ function RequestDetail() {
     )
   }
 
-  const isOpen = !["completed", "canceled"].includes(request.linearStateType)
+  const isOpen = !isDoneStatus(request.linearStateType)
 
   return (
     <PageShell

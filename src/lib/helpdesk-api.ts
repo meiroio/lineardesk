@@ -141,3 +141,16 @@ export function statusClassName(type: string) {
       return ""
   }
 }
+
+// Linear's terminal state types — Done (completed), Cancelled and Duplicate
+// (both canceled). Kept as the single source of truth for "is this request
+// finished", used by the list status filter and the detail close affordance.
+export const TERMINAL_STATUS_TYPES = ["completed", "canceled"] as const
+
+export function isDoneStatus(type: string): boolean {
+  return (TERMINAL_STATUS_TYPES as readonly string[]).includes(type)
+}
+
+// Poll interval for the live-status views (list + detail) so webhook-driven
+// status changes surface without a manual reload.
+export const LIVE_REFETCH_INTERVAL_MS = 15_000

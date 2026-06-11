@@ -13,6 +13,8 @@ import { BrandMark } from "@/components/logo"
 import { PageShell } from "@/components/page-shell"
 import { SeverityBadge } from "@/components/severity-badge"
 import { SeverityFilter } from "@/components/severity-filter"
+import { StatusFilter } from "@/components/status-filter"
+import type { StatusScope } from "@/components/status-filter"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -31,6 +33,8 @@ import {
   fetchRequest,
   fetchRequests,
   formatDateTime,
+  isDoneStatus,
+  LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
@@ -48,6 +52,7 @@ function Dashboard() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
   const [severityFilter, setSeverityFilter] = useState<Set<number>>(new Set())
+  const [statusScope, setStatusScope] = useState<StatusScope>("active")
 
   const {
     data: requests = [],
@@ -56,6 +61,10 @@ function Dashboard() {
   } = useQuery({
     queryKey: requestKeys.list,
     queryFn: fetchRequests,
+    // Poll so webhook-driven status changes appear without a manual reload,
+    // and refresh when the tab regains focus (the global default is off).
+    refetchInterval: LIVE_REFETCH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   })
 
   const isAuthError = error instanceof ApiError && error.status === 401
@@ -88,15 +97,22 @@ function Dashboard() {
     setPage(0)
   }
 
+  const changeStatusScope = (scope: StatusScope) => {
+    setStatusScope(scope)
+    setPage(0)
+  }
+
   // Filter the full set first, then paginate, so each page holds up to
   // PAGE_SIZE matching requests (not a page sliced and then filtered down).
-  const filteredRequests =
-    severityFilter.size === 0
-      ? requests
-      : requests.filter(
-          (request) =>
-            request.severity != null && severityFilter.has(request.severity)
-        )
+  const filteredRequests = requests.filter((request) => {
+    const done = isDoneStatus(request.linearStateType)
+    if (statusScope === "active" && done) return false
+    if (statusScope === "done" && !done) return false
+    if (severityFilter.size > 0) {
+      return request.severity != null && severityFilter.has(request.severity)
+    }
+    return true
+  })
 
   const pageCount = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
@@ -161,7 +177,13 @@ function Dashboard() {
         </Empty>
       ) : (
         <div className="flex flex-col gap-4">
-          <SeverityFilter selected={severityFilter} onToggle={toggleSeverity} />
+          <div className="flex flex-col gap-3">
+            <StatusFilter value={statusScope} onChange={changeStatusScope} />
+            <SeverityFilter
+              selected={severityFilter}
+              onToggle={toggleSeverity}
+            />
+          </div>
           {filteredRequests.length === 0 ? (
             <Empty className="rounded-2xl border border-dashed">
               <EmptyHeader>
@@ -170,7 +192,7 @@ function Dashboard() {
                 </EmptyMedia>
                 <EmptyTitle>No matching requests</EmptyTitle>
                 <EmptyDescription>
-                  No requests match the selected severities.
+                  No requests match the current filters.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
