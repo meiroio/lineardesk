@@ -53,17 +53,39 @@ Linear defaults:
 - `POST /api/linear/webhook`
 - `/api/auth/*` via Better Auth
 
-## Deployment Shape
+## Deployment (Vercel + Neon)
 
-This repo provides an app container and health endpoint for Kubernetes. Production Postgres, Kubernetes manifests, ingress, TLS, and secrets are intentionally left to DevOps.
+LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](https://neon.tech) Postgres database. The build switches to Nitro's Vercel preset automatically — Vercel sets `VERCEL=1`, which `vite.config.ts` uses to emit the Vercel Build Output (`.vercel/output`).
 
-Build the app image:
+1. **Neon database** — create a project and copy two connection strings: the **pooled** URL (host contains `-pooler`) for the app runtime, and the **direct** URL for migrations. Apply the schema against the direct URL:
+
+   ```bash
+   DATABASE_URL='<neon-direct-url>' bun run db:migrate
+   ```
+
+2. **Vercel project** — import the repo. Vercel auto-detects Bun (`bun.lock`); the build command (`bun run build`) is pinned in `vercel.json`, and Nitro writes the Build Output to `.vercel/output`.
+
+3. **Environment variables** (Vercel → Settings → Environment Variables):
+   - `DATABASE_URL` — Neon **pooled** URL
+   - `BETTER_AUTH_URL` — your deployed origin, e.g. `https://lineardesk.vercel.app`
+   - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS`
+   - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
+
+4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
+
+5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook`.
+
+Re-run the migration command whenever the schema changes.
+
+### Self-hosting (optional)
+
+The `Dockerfile` still builds a standalone Bun server (Nitro `bun` preset) if you'd rather self-host than use Vercel:
 
 ```bash
 docker build -t lineardesk .
 ```
 
-The container listens on port `3000` and exposes `/api/health` for readiness/liveness probes.
+It listens on port `3000` and exposes `/api/health` for readiness/liveness probes.
 
 ## License
 

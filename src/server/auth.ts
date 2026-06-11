@@ -2,11 +2,12 @@ import { betterAuth } from "better-auth"
 import { Pool } from "pg"
 
 import { isAllowedEmail } from "./config"
+import { pgPoolConfig } from "./db/client"
 import type { AppConfig, AuthBridge, AuthSession } from "./types"
 
 export function createAuthBridge(config: AppConfig): AuthBridge {
   const auth = betterAuth({
-    database: new Pool({ connectionString: config.databaseUrl }),
+    database: new Pool(pgPoolConfig(config.databaseUrl)),
     secret: config.betterAuthSecret,
     baseURL: config.betterAuthUrl,
     socialProviders: {
