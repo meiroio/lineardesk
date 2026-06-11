@@ -38,10 +38,13 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 })
 
+const PAGE_SIZE = 10
+
 function Dashboard() {
   const navigate = useNavigate()
   const [requests, setRequests] = useState<PortalRequest[]>([])
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
+  const [page, setPage] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -66,6 +69,15 @@ function Dashboard() {
       active = false
     }
   }, [navigate])
+
+  const pageCount = Math.max(1, Math.ceil(requests.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const visibleRequests = requests.slice(
+    currentPage * PAGE_SIZE,
+    currentPage * PAGE_SIZE + PAGE_SIZE
+  )
+  const rangeStart = currentPage * PAGE_SIZE + 1
+  const rangeEnd = currentPage * PAGE_SIZE + visibleRequests.length
 
   return (
     <PageShell
@@ -120,42 +132,69 @@ function Dashboard() {
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-          <ul className="divide-y">
-            {requests.map((request) => (
-              <li key={request.id}>
-                <Link
-                  to="/requests/$requestId"
-                  params={{ requestId: request.id }}
-                  className="group flex items-center gap-4 px-5 py-4 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
-                >
-                  <span className="min-w-0 flex-1 space-y-0.5">
-                    <span className="block truncate text-sm font-medium">
-                      {request.title}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {request.linearIdentifier} · Updated{" "}
-                      {formatDateTime(request.updatedAt)}
-                    </span>
-                  </span>
-                  <SeverityBadge
-                    priority={request.severity}
-                    className="hidden shrink-0 sm:inline-flex"
-                  />
-                  <Badge
-                    variant="outline"
-                    className={`shrink-0 ${statusClassName(request.linearStateType)}`}
+        <div className="flex flex-col gap-4">
+          <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+            <ul className="divide-y">
+              {visibleRequests.map((request) => (
+                <li key={request.id}>
+                  <Link
+                    to="/requests/$requestId"
+                    params={{ requestId: request.id }}
+                    className="group flex items-center gap-4 px-5 py-4 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
                   >
-                    {request.linearStateName}
-                  </Badge>
-                  <RiArrowRightSLine
-                    className="size-4 shrink-0 text-muted-foreground/50 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5"
-                    aria-hidden
-                  />
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    <span className="min-w-0 flex-1 space-y-0.5">
+                      <span className="block truncate text-sm font-medium">
+                        {request.title}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {request.linearIdentifier} · Updated{" "}
+                        {formatDateTime(request.updatedAt)}
+                      </span>
+                    </span>
+                    <SeverityBadge
+                      priority={request.severity}
+                      className="hidden shrink-0 sm:inline-flex"
+                    />
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 ${statusClassName(request.linearStateType)}`}
+                    >
+                      {request.linearStateName}
+                    </Badge>
+                    <RiArrowRightSLine
+                      className="size-4 shrink-0 text-muted-foreground/50 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5"
+                      aria-hidden
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {requests.length > PAGE_SIZE ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>
+                Showing {rangeStart}–{rangeEnd} of {requests.length}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </PageShell>

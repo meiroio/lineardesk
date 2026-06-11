@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import type { NodePgDatabase } from "drizzle-orm/node-postgres"
 
 import type {
@@ -78,35 +78,6 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     const row = rows[0] as HelpdeskRequestRow | undefined
 
     return row ? toRequestRecord(row) : null
-  }
-
-  async listRequestsMissingDetailsComment(
-    limit: number
-  ): Promise<RequestRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(helpdeskRequests)
-      .where(isNull(helpdeskRequests.linearDetailsCommentId))
-      .orderBy(desc(helpdeskRequests.createdAt))
-      .limit(limit)
-
-    return rows.map(toRequestRecord)
-  }
-
-  async markDetailsCommentCreated(
-    id: string,
-    commentId: string
-  ): Promise<void> {
-    const now = new Date()
-
-    await this.db
-      .update(helpdeskRequests)
-      .set({
-        linearDetailsCommentId: commentId,
-        linearDetailsCommentedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(helpdeskRequests.id, id))
   }
 
   async hasProcessedWebhookEvent(eventKey: string): Promise<boolean> {

@@ -12,6 +12,8 @@ type PageShellProps = {
   eyebrow?: React.ReactNode
   /** When set, renders a back-to-requests row above the header. */
   backLabel?: string
+  /** Actions rendered in the back row, next to the theme toggle. */
+  backActions?: React.ReactNode
   actions?: React.ReactNode
   width?: "default" | "narrow"
   children?: React.ReactNode
@@ -22,6 +24,7 @@ export function PageShell({
   description,
   eyebrow,
   backLabel,
+  backActions,
   actions,
   width = "default",
   children,
@@ -46,7 +49,10 @@ export function PageShell({
               <RiArrowLeftLine aria-hidden />
               {backLabel}
             </Link>
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              {backActions}
+              <ThemeToggle />
+            </div>
           </div>
         ) : null}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

@@ -2,13 +2,13 @@ import { LinearClient } from "@linear/sdk"
 
 import type {
   AppConfig,
+  CloseIssueInput,
   CreateIssueCommentInput,
   CreateHelpdeskIssueInput,
-  HelpdeskIssueDetailsCommentInput,
   LinearGateway,
-  LinearCommentSnapshot,
   LinearIssueCommentSnapshot,
   LinearIssueSnapshot,
+  LinearIssueStateSnapshot,
   UploadAssetInput,
   UploadAssetResult,
 } from "./types"
@@ -27,11 +27,6 @@ type IssueLabelCandidate = {
   isGroup?: boolean
 }
 
-type IssueDetailsCommentCandidate = {
-  id: string
-  body: string
-}
-
 type LinearGatewayConfig = AppConfig["linear"]
 type LinearIssueCreateInput = {
   title: string
@@ -40,10 +35,6 @@ type LinearIssueCreateInput = {
   stateId: string
   labelIds?: string[]
   priority?: number
-}
-type LinearCommentCreateInput = {
-  issueId: string
-  body: string
 }
 
 export function selectWorkflowStateByName<T extends WorkflowStateCandidate>(
@@ -55,6 +46,17 @@ export function selectWorkflowStateByName<T extends WorkflowStateCandidate>(
     states.find((state) => {
       return state.name === name && state.teamId === teamId
     }) ?? null
+  )
+}
+
+export function selectWorkflowStateByType<T extends WorkflowStateCandidate>(
+  states: readonly T[],
+  type: string,
+  teamId: string
+) {
+  return (
+    states.find((state) => state.type === type && state.teamId === teamId) ??
+    null
   )
 }
 
@@ -93,17 +95,6 @@ export function getDetailsCommentMarker(issueId: string) {
   return `LinearDesk details comment: ${issueId}`
 }
 
-export function selectDetailsCommentId<T extends IssueDetailsCommentCandidate>(
-  comments: readonly T[],
-  issueId: string
-) {
-  return (
-    comments.find((comment) =>
-      comment.body.includes(getDetailsCommentMarker(issueId))
-    )?.id ?? null
-  )
-}
-
 export function buildLinearIssueInput(input: {
   title: string
   description: string
@@ -124,17 +115,6 @@ export function buildLinearIssueInput(input: {
   if (typeof input.priority === "number") issueInput.priority = input.priority
 
   return issueInput
-}
-
-export function buildLinearIssueCommentInput(input: {
-  issueId: string
-  description: string
-  requesterEmail: string
-}): LinearCommentCreateInput {
-  return {
-    issueId: input.issueId,
-    body: `Requester: ${input.requesterEmail}\n\n${input.description}\n\n---\n${getDetailsCommentMarker(input.issueId)}`,
-  }
 }
 
 export function buildRequesterReplyCommentBody(input: {
@@ -184,58 +164,19 @@ class LinearSdkGateway implements LinearGateway {
     if (!issue)
       throw new Error("Linear issue was created but could not be fetched")
 
-    let detailsCommentId: string | null = null
-    try {
-      detailsCommentId = (
-        await this.createHelpdeskIssueDetailsComment({
-          issueId: issue.id,
-          description: input.description,
-          requesterEmail: input.requesterEmail,
-        })
-      ).id
-    } catch {
-      detailsCommentId = null
-    }
-
     const issueState = (await issue.state) ?? state
 
     return {
       id: issue.id,
       identifier: issue.identifier,
       url: issue.url,
-      detailsCommentId,
+      detailsCommentId: null,
       state: {
         id: issueState.id,
         name: issueState.name,
         type: issueState.type,
       },
     }
-  }
-
-  async createHelpdeskIssueDetailsComment(
-    input: HelpdeskIssueDetailsCommentInput
-  ): Promise<LinearCommentSnapshot> {
-    const issue = await this.client.issue(input.issueId)
-
-    const comments = await issue.comments({ first: 50 })
-    const existingCommentId = selectDetailsCommentId(
-      comments.nodes,
-      input.issueId
-    )
-    if (existingCommentId) return { id: existingCommentId }
-
-    const commentPayload = await this.client.createComment(
-      buildLinearIssueCommentInput(input)
-    )
-    if (!commentPayload.success)
-      throw new Error("Linear issue comment creation failed")
-
-    const commentId =
-      commentPayload.commentId ?? (await commentPayload.comment)?.id ?? null
-    if (!commentId)
-      throw new Error("Linear issue comment was created but no id was returned")
-
-    return { id: commentId }
   }
 
   async listIssueComments(
@@ -304,6 +245,26 @@ class LinearSdkGateway implements LinearGateway {
     return { assetUrl: uploadFile.assetUrl }
   }
 
+  async closeIssue(input: CloseIssueInput): Promise<LinearIssueStateSnapshot> {
+    const state = await this.findWorkflowStateByType(
+      input.resolution === "resolved" ? "completed" : "canceled"
+    )
+
+    const payload = await this.client.updateIssue(input.issueId, {
+      stateId: state.id,
+    })
+    if (!payload.success) throw new Error("Linear issue update failed")
+
+    const issue = await payload.issue
+    const issueState = issue ? ((await issue.state) ?? state) : state
+
+    return {
+      id: issueState.id,
+      name: issueState.name,
+      type: issueState.type,
+    }
+  }
+
   private async toIssueCommentSnapshot(comment: {
     id: string
     body: string
@@ -353,6 +314,26 @@ class LinearSdkGateway implements LinearGateway {
     if (!state) {
       throw new Error(
         `Linear workflow state "${this.config.initialStateName}" was not found for team ${this.config.teamId}`
+      )
+    }
+
+    return state
+  }
+
+  private async findWorkflowStateByType(type: string) {
+    const states = await this.client.workflowStates({
+      first: 100,
+      includeArchived: false,
+    })
+    const state = selectWorkflowStateByType(
+      states.nodes,
+      type,
+      this.config.teamId
+    )
+
+    if (!state) {
+      throw new Error(
+        `Linear workflow state of type "${type}" was not found for team ${this.config.teamId}`
       )
     }
 

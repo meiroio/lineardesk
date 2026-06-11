@@ -2,7 +2,11 @@ import { Elysia } from "elysia"
 
 import { createAuthBridge } from "./auth"
 import { isAllowedEmail, readAppConfig } from "./config"
-import { buildRequesterReplyCommentBody, createLinearGateway } from "./linear"
+import {
+  buildRequesterReplyCommentBody,
+  createLinearGateway,
+  getDetailsCommentMarker,
+} from "./linear"
 import { createHelpdeskRepository } from "./repository"
 import {
   parseCreateCommentInput,
@@ -13,6 +17,7 @@ import type {
   AppConfig,
   AuthBridge,
   AuthSession,
+  CloseIssueResolution,
   HelpdeskRepository,
   LinearGateway,
   LinearIssueCommentSnapshot,
@@ -59,6 +64,12 @@ function sanitizeFilename(value: string | null): string {
   const base = decoded.split(/[\\/]/).pop() ?? "image"
   const cleaned = base.replace(/[^\w.-]+/g, "_").slice(0, 100)
   return cleaned || "image"
+}
+
+function parseResolution(body: unknown): CloseIssueResolution | null {
+  if (!body || typeof body !== "object" || !("resolution" in body)) return null
+  const value = body.resolution
+  return value === "resolved" || value === "canceled" ? value : null
 }
 
 export function createApiApp(dependencies?: ApiDependencies) {
@@ -135,8 +146,14 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
       if (!record) return json({ error: "not_found" }, 404)
 
-      const comments = await getDependencies().linear.listIssueComments(
+      const allComments = await getDependencies().linear.listIssueComments(
         record.linearIssueId
+      )
+      const detailsMarker = getDetailsCommentMarker(record.linearIssueId)
+      const comments = allComments.filter(
+        (comment) =>
+          comment.id !== record.linearDetailsCommentId &&
+          !comment.body.includes(detailsMarker)
       )
 
       return { request: serializeRequest(record, comments) }
@@ -172,6 +189,47 @@ export function createApiApp(dependencies?: ApiDependencies) {
       })
 
       return json({ comment: serializeLinearComment(comment) }, 201)
+    })
+    .post("/requests/:id/close", async ({ params, body, request }) => {
+      const deps = getDependencies()
+      const session = await requireAuthorizedSession(deps, request.headers)
+      if (session instanceof Response) return session
+
+      const resolution = parseResolution(body)
+      if (!resolution) {
+        return json(
+          {
+            error: "validation_error",
+            issues: ["resolution must be 'resolved' or 'canceled'"],
+          },
+          400
+        )
+      }
+
+      const record = await deps.repo.getRequestForUser(
+        params.id,
+        session.user.id
+      )
+      if (!record) return json({ error: "not_found" }, 404)
+
+      const state = await deps.linear.closeIssue({
+        issueId: record.linearIssueId,
+        resolution,
+      })
+      await deps.repo.updateRequestFromLinear({
+        linearIssueId: record.linearIssueId,
+        linearIdentifier: record.linearIdentifier,
+        linearUrl: record.linearUrl,
+        linearStateId: state.id,
+        linearStateName: state.name,
+        linearStateType: state.type,
+      })
+
+      const updated = await deps.repo.getRequestForUser(
+        params.id,
+        session.user.id
+      )
+      return { request: serializeRequest(updated ?? record) }
     })
     .post("/uploads", async ({ request }) => {
       const deps = getDependencies()

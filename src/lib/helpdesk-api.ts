@@ -72,6 +72,17 @@ export async function uploadImage(
   return readJson<{ assetUrl: string; filename: string }>(response)
 }
 
+export type RequestResolution = "resolved" | "canceled"
+
+export async function closeRequest(
+  id: string,
+  resolution: RequestResolution
+): Promise<{ request: PortalRequest }> {
+  return apiPost<{ request: PortalRequest }>(`/api/requests/${id}/close`, {
+    resolution,
+  })
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null)
   if (!response.ok) {

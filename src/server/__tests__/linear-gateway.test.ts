@@ -97,3 +97,73 @@ describe("uploadAsset", () => {
     ).rejects.toThrow("Linear asset upload failed with status 500")
   })
 })
+
+describe("closeIssue", () => {
+  const states = {
+    nodes: [
+      { id: "done-state", name: "Done", type: "completed", teamId: "team-id" },
+      {
+        id: "cancel-state",
+        name: "Canceled",
+        type: "canceled",
+        teamId: "team-id",
+      },
+    ],
+  }
+
+  it("moves the issue to a completed state when resolved", async () => {
+    const workflowStates = vi.fn(async () => states)
+    const updateIssue = vi.fn(async () => ({ success: true, issue: null }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { workflowStates, updateIssue } as unknown as LinearClient
+    })
+
+    const gateway = createLinearGateway(config)
+    const result = await gateway.closeIssue({
+      issueId: "issue-1",
+      resolution: "resolved",
+    })
+
+    expect(updateIssue).toHaveBeenCalledWith("issue-1", {
+      stateId: "done-state",
+    })
+    expect(result).toEqual({
+      id: "done-state",
+      name: "Done",
+      type: "completed",
+    })
+  })
+
+  it("moves the issue to a canceled state when canceled", async () => {
+    const workflowStates = vi.fn(async () => states)
+    const updateIssue = vi.fn(async () => ({ success: true, issue: null }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { workflowStates, updateIssue } as unknown as LinearClient
+    })
+
+    const gateway = createLinearGateway(config)
+    const result = await gateway.closeIssue({
+      issueId: "issue-1",
+      resolution: "canceled",
+    })
+
+    expect(updateIssue).toHaveBeenCalledWith("issue-1", {
+      stateId: "cancel-state",
+    })
+    expect(result.type).toBe("canceled")
+  })
+
+  it("throws when no matching workflow state exists", async () => {
+    const workflowStates = vi.fn(async () => ({ nodes: [] }))
+    const updateIssue = vi.fn()
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { workflowStates, updateIssue } as unknown as LinearClient
+    })
+
+    const gateway = createLinearGateway(config)
+    await expect(
+      gateway.closeIssue({ issueId: "issue-1", resolution: "resolved" })
+    ).rejects.toThrow('Linear workflow state of type "completed"')
+    expect(updateIssue).not.toHaveBeenCalled()
+  })
+})

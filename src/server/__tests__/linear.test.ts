@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  buildLinearIssueCommentInput,
   buildLinearIssueInput,
   buildRequesterReplyCommentBody,
-  selectDetailsCommentId,
   requireIssueLabelByName,
   selectIssueLabelByName,
   selectWorkflowStateByName,
+  selectWorkflowStateByType,
 } from "../linear"
 
 describe("buildLinearIssueInput", () => {
@@ -73,36 +72,6 @@ describe("buildLinearIssueInput", () => {
   })
 })
 
-describe("buildLinearIssueCommentInput", () => {
-  it("creates a Linear issue comment with requester and submitted details", () => {
-    const input = buildLinearIssueCommentInput({
-      issueId: "issue-id",
-      description: "The export button spins forever.",
-      requesterEmail: "user@example.com",
-    })
-
-    expect(input).toEqual({
-      issueId: "issue-id",
-      body: "Requester: user@example.com\n\nThe export button spins forever.\n\n---\nLinearDesk details comment: issue-id",
-    })
-  })
-
-  it("finds an existing LinearDesk details comment by marker", () => {
-    expect(
-      selectDetailsCommentId(
-        [
-          { id: "other-comment-id", body: "Requester: another@example.com" },
-          {
-            id: "comment-id",
-            body: "Requester: user@example.com\n\nDetails\n\n---\nLinearDesk details comment: issue-id",
-          },
-        ],
-        "issue-id"
-      )
-    ).toBe("comment-id")
-  })
-})
-
 describe("buildRequesterReplyCommentBody", () => {
   it("attributes requester replies before the submitted body", () => {
     expect(
@@ -130,6 +99,18 @@ describe("Linear lookup helpers", () => {
     expect(selectWorkflowStateByName(states, "Triage", "team-id")).toEqual(
       states[2]
     )
+  })
+
+  it("selects workflow states by type and team id", () => {
+    const states = [
+      { id: "other-team", name: "Done", type: "completed", teamId: "x" },
+      { id: "state-id", name: "Done", type: "completed", teamId: "team-id" },
+    ]
+
+    expect(selectWorkflowStateByType(states, "completed", "team-id")).toEqual(
+      states[1]
+    )
+    expect(selectWorkflowStateByType(states, "canceled", "team-id")).toBeNull()
   })
 
   it("selects labels by exact name", () => {

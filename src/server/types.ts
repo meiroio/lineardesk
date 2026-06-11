@@ -54,28 +54,23 @@ export type UploadAssetResult = {
   assetUrl: string
 }
 
+export type CloseIssueResolution = "resolved" | "canceled"
+
+export type CloseIssueInput = {
+  issueId: string
+  resolution: CloseIssueResolution
+}
+
 export type LinearGateway = {
   createHelpdeskIssue: (
     input: CreateHelpdeskIssueInput
   ) => Promise<LinearIssueSnapshot>
-  createHelpdeskIssueDetailsComment: (
-    input: HelpdeskIssueDetailsCommentInput
-  ) => Promise<LinearCommentSnapshot>
   createIssueComment: (
     input: CreateIssueCommentInput
   ) => Promise<LinearIssueCommentSnapshot>
   listIssueComments: (issueId: string) => Promise<LinearIssueCommentSnapshot[]>
   uploadAsset: (input: UploadAssetInput) => Promise<UploadAssetResult>
-}
-
-export type HelpdeskIssueDetailsCommentInput = {
-  issueId: string
-  description: string
-  requesterEmail: string
-}
-
-export type LinearCommentSnapshot = {
-  id: string
+  closeIssue: (input: CloseIssueInput) => Promise<LinearIssueStateSnapshot>
 }
 
 export type CreateIssueCommentInput = {
@@ -137,8 +132,6 @@ export type HelpdeskRepository = {
     id: string,
     userId: string
   ) => Promise<RequestRecord | null>
-  listRequestsMissingDetailsComment: (limit: number) => Promise<RequestRecord[]>
-  markDetailsCommentCreated: (id: string, commentId: string) => Promise<void>
   hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>
   recordWebhookEvent: (
     eventKey: string,

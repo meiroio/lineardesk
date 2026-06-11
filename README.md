@@ -24,14 +24,6 @@ bun run dev
 The dev server runs on [http://localhost:3000](http://localhost:3000).
 The local Postgres container is exposed on host port `5433` to avoid collisions with other local Postgres instances.
 
-If requests were created before Linear details comments were tracked, run this after migrations:
-
-```bash
-bun run backfill:linear-comments
-```
-
-The backfill command finds requests missing a stored Linear details comment id, creates the comment if needed, and stores the comment id. It uses a marker in the comment body to avoid creating duplicates.
-
 ## Environment Contract
 
 Required runtime variables:

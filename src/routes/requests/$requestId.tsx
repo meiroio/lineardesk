@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { RiExternalLinkLine } from "@remixicon/react"
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { RiAddLine, RiExternalLinkLine } from "@remixicon/react"
 import type { FormEvent } from "react"
 import { useCallback, useEffect, useState } from "react"
 
@@ -8,7 +8,7 @@ import { PageShell } from "@/components/page-shell"
 import { SeverityBadge } from "@/components/severity-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -20,11 +20,12 @@ import {
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import type { PortalRequest } from "@/lib/helpdesk-api"
+import type { PortalRequest, RequestResolution } from "@/lib/helpdesk-api"
 import {
   ApiError,
   apiGet,
   apiPost,
+  closeRequest,
   formatCommentCount,
   formatDateTime,
   statusClassName,
@@ -46,6 +47,9 @@ function RequestDetail() {
   const [replyBody, setReplyBody] = useState("")
   const [replyError, setReplyError] = useState<string | null>(null)
   const [replying, setReplying] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const [closeBusy, setCloseBusy] = useState(false)
+  const [closeError, setCloseError] = useState<string | null>(null)
   const comments = request?.comments ?? []
   const fetchRequest = useCallback(() => {
     return apiGet<{ request: PortalRequest }>(`/api/requests/${requestId}`)
@@ -107,6 +111,26 @@ function RequestDetail() {
     }
   }
 
+  async function handleClose(resolution: RequestResolution) {
+    setCloseBusy(true)
+    setCloseError(null)
+
+    try {
+      const data = await closeRequest(requestId, resolution)
+      setRequest(data.request)
+      setClosing(false)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        void navigate({ to: "/login" })
+        return
+      }
+
+      setCloseError("Could not close the request. Try again after a moment.")
+    } finally {
+      setCloseBusy(false)
+    }
+  }
+
   if (status === "loading") {
     return (
       <PageShell backLabel="Requests" title="Loading request…">
@@ -135,11 +159,22 @@ function RequestDetail() {
     )
   }
 
+  const isOpen = !["completed", "canceled"].includes(request.linearStateType)
+
   return (
     <PageShell
       backLabel="Requests"
       title={request.title}
       description={request.linearIdentifier}
+      backActions={
+        <Link
+          to="/requests/new"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          <RiAddLine aria-hidden />
+          New request
+        </Link>
+      }
       actions={
         <>
           <SeverityBadge priority={request.severity} />
@@ -283,6 +318,48 @@ function RequestDetail() {
               </div>
             </dl>
           </CardContent>
+          {isOpen ? (
+            <CardFooter className="flex-col items-stretch gap-2 border-t">
+              {closing ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Close this request as:
+                  </p>
+                  <Button
+                    variant="outline"
+                    disabled={closeBusy}
+                    onClick={() => void handleClose("resolved")}
+                  >
+                    Resolved
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={closeBusy}
+                    onClick={() => void handleClose("canceled")}
+                  >
+                    Cancelled
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    disabled={closeBusy}
+                    onClick={() => {
+                      setClosing(false)
+                      setCloseError(null)
+                    }}
+                  >
+                    Keep open
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => setClosing(true)}>
+                  Close request
+                </Button>
+              )}
+              {closeError ? (
+                <p className="text-sm text-destructive">{closeError}</p>
+              ) : null}
+            </CardFooter>
+          ) : null}
         </Card>
       </div>
     </PageShell>
