@@ -29,6 +29,13 @@ export type LinearIssueStateSnapshot = {
   type: string
 }
 
+export type IssueStateSnapshot = {
+  id: string
+  identifier: string
+  url: string
+  state: LinearIssueStateSnapshot
+}
+
 export type LinearIssueSnapshot = {
   id: string
   identifier: string
@@ -69,6 +76,7 @@ export type LinearGateway = {
     input: CreateIssueCommentInput
   ) => Promise<LinearIssueCommentSnapshot>
   listIssueComments: (issueId: string) => Promise<LinearIssueCommentSnapshot[]>
+  listIssueStates: (issueIds: string[]) => Promise<IssueStateSnapshot[]>
   uploadAsset: (input: UploadAssetInput) => Promise<UploadAssetResult>
   closeIssue: (input: CloseIssueInput) => Promise<LinearIssueStateSnapshot>
 }
@@ -132,6 +140,7 @@ export type HelpdeskRepository = {
     id: string,
     userId: string
   ) => Promise<RequestRecord | null>
+  listOpenRequests: (limit: number) => Promise<RequestRecord[]>
   hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>
   recordWebhookEvent: (
     eventKey: string,

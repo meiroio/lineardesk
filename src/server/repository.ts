@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, notInArray } from "drizzle-orm"
 import type { NodePgDatabase } from "drizzle-orm/node-postgres"
 
 import type {
@@ -57,6 +57,19 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .from(helpdeskRequests)
       .where(eq(helpdeskRequests.requesterUserId, userId))
       .orderBy(desc(helpdeskRequests.createdAt))
+
+    return rows.map(toRequestRecord)
+  }
+
+  async listOpenRequests(limit: number): Promise<RequestRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(helpdeskRequests)
+      .where(
+        notInArray(helpdeskRequests.linearStateType, ["completed", "canceled"])
+      )
+      .orderBy(desc(helpdeskRequests.updatedAt))
+      .limit(limit)
 
     return rows.map(toRequestRecord)
   }

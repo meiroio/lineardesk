@@ -5,6 +5,7 @@ import type {
   CloseIssueInput,
   CreateIssueCommentInput,
   CreateHelpdeskIssueInput,
+  IssueStateSnapshot,
   LinearGateway,
   LinearIssueCommentSnapshot,
   LinearIssueSnapshot,
@@ -265,6 +266,33 @@ class LinearSdkGateway implements LinearGateway {
       name: issueState.name,
       type: issueState.type,
     }
+  }
+
+  async listIssueStates(issueIds: string[]): Promise<IssueStateSnapshot[]> {
+    if (issueIds.length === 0) return []
+
+    const issues = await this.client.issues({
+      filter: { id: { in: issueIds } },
+      first: 250,
+    })
+
+    const snapshots = await Promise.all(
+      issues.nodes.map(async (issue) => {
+        const state = await issue.state
+        if (!state) return null
+
+        return {
+          id: issue.id,
+          identifier: issue.identifier,
+          url: issue.url,
+          state: { id: state.id, name: state.name, type: state.type },
+        }
+      })
+    )
+
+    return snapshots.filter(
+      (snapshot): snapshot is IssueStateSnapshot => snapshot !== null
+    )
   }
 
   private async toIssueCommentSnapshot(comment: {

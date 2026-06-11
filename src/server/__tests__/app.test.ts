@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { createApiApp } from "../app"
 import type {
@@ -64,6 +64,7 @@ function makeRepo(): HelpdeskRepository {
     createRequest: vi.fn(async () => makeRecord()),
     listRequestsForUser: vi.fn(async () => [makeRecord()]),
     getRequestForUser: vi.fn(async () => makeRecord()),
+    listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
@@ -84,6 +85,7 @@ describe("createApiApp", () => {
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
         uploadAsset: vi.fn(),
+        listIssueStates: vi.fn(async () => []),
       },
       auth: {
         handler: authHandler,
@@ -120,6 +122,7 @@ describe("createApiApp", () => {
       createIssueComment: vi.fn(),
       listIssueComments: vi.fn(async () => []),
       uploadAsset: vi.fn(),
+      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -171,6 +174,7 @@ describe("createApiApp", () => {
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
         uploadAsset: vi.fn(),
+        listIssueStates: vi.fn(async () => []),
       },
       auth: {
         getSession: vi.fn(async () => ({
@@ -198,6 +202,7 @@ describe("createApiApp", () => {
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
         uploadAsset: vi.fn(),
+        listIssueStates: vi.fn(async () => []),
       },
       auth: { getSession: vi.fn(async () => session) },
       verifyWebhook: vi.fn(async () => ({
@@ -239,6 +244,7 @@ describe("createApiApp", () => {
         },
       ]),
       uploadAsset: vi.fn(),
+      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -281,6 +287,7 @@ describe("createApiApp", () => {
       })),
       listIssueComments: vi.fn(async () => []),
       uploadAsset: vi.fn(),
+      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -332,6 +339,7 @@ describe("createApiApp", () => {
         },
       ]),
       uploadAsset: vi.fn(),
+      listIssueStates: vi.fn(async () => []),
       closeIssue: vi.fn(),
     }
     const app = createApiApp({
@@ -360,6 +368,7 @@ describe("createApiApp", () => {
       createIssueComment: vi.fn(),
       listIssueComments: vi.fn(async () => []),
       uploadAsset: vi.fn(),
+      listIssueStates: vi.fn(async () => []),
       closeIssue: vi.fn(async () => ({
         id: "canceled-state",
         name: "Canceled",
@@ -398,6 +407,7 @@ describe("createApiApp", () => {
         createIssueComment: vi.fn(),
         listIssueComments: vi.fn(async () => []),
         uploadAsset: vi.fn(),
+        listIssueStates: vi.fn(async () => []),
         closeIssue: vi.fn(),
       },
       auth: { getSession: vi.fn(async () => session) },
@@ -428,6 +438,7 @@ describe("POST /api/uploads", () => {
       uploadAsset:
         overrides?.uploadAsset ??
         vi.fn(async () => ({ assetUrl: "https://uploads.linear.app/abc.png" })),
+      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -497,5 +508,59 @@ describe("POST /api/uploads", () => {
     )
 
     expect(response.status).toBe(401)
+  })
+})
+
+describe("GET /api/cron/reconcile", () => {
+  function makeLinear(): LinearGateway {
+    return {
+      createHelpdeskIssue: vi.fn(),
+      createIssueComment: vi.fn(),
+      listIssueComments: vi.fn(async () => []),
+      listIssueStates: vi.fn(async () => []),
+      uploadAsset: vi.fn(),
+      closeIssue: vi.fn(),
+    }
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("rejects reconcile without the cron secret", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret")
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/cron/reconcile")
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it("reconciles open requests when the cron secret matches", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret")
+    const repo = makeRepo()
+    const app = createApiApp({
+      config,
+      repo,
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/cron/reconcile", {
+        headers: { authorization: "Bearer cron-secret" },
+      })
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({ ok: true })
+    expect(repo.listOpenRequests).toHaveBeenCalled()
   })
 })

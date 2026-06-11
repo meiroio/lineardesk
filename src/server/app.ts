@@ -1,3 +1,5 @@
+import process from "node:process"
+
 import { Elysia } from "elysia"
 
 import { createAuthBridge } from "./auth"
@@ -7,6 +9,7 @@ import {
   createLinearGateway,
   getDetailsCommentMarker,
 } from "./linear"
+import { reconcileOpenRequests } from "./reconcile"
 import { createHelpdeskRepository } from "./repository"
 import {
   parseCreateCommentInput,
@@ -294,6 +297,24 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
 
       return { ok: true, ignored: !snapshot }
+    })
+    .get("/cron/reconcile", async ({ request }) => {
+      const secret = process.env.CRON_SECRET
+      if (
+        !secret ||
+        request.headers.get("authorization") !== `Bearer ${secret}`
+      ) {
+        return json({ error: "unauthorized" }, 401)
+      }
+
+      const deps = getDependencies()
+      const result = await reconcileOpenRequests({
+        repo: deps.repo,
+        linear: deps.linear,
+        limit: 200,
+      })
+
+      return json({ ok: true, ...result })
     })
     .mount(authHandler)
 }

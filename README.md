@@ -70,12 +70,17 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `BETTER_AUTH_URL` — your deployed origin, e.g. `https://lineardesk.vercel.app`
    - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS`
    - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
+   - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
 
 4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
 
-5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook`.
+5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook`. This keeps request statuses current in near-real-time.
 
 Re-run the migration command whenever the schema changes.
+
+### Status sync
+
+The Linear webhook is the primary, near-real-time path for status updates. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) pulls the current Linear state for every non-terminal request and corrects any that drifted. Comments are always read live from Linear, so they never go stale.
 
 ### Self-hosting (optional)
 
