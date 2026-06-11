@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs"
 
 import { defineConfig } from "drizzle-kit"
 
+import { normalizeConnectionString } from "./src/server/db/connection"
+
 loadLocalEnv()
 
 export default defineConfig({
@@ -10,9 +12,10 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url:
+    url: normalizeConnectionString(
       process.env.DATABASE_URL ??
-      "postgres://lineardesk:lineardesk@localhost:5433/lineardesk",
+        "postgres://lineardesk:lineardesk@localhost:5433/lineardesk"
+    ),
   },
 })
 
