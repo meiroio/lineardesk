@@ -82,6 +82,26 @@ Re-run the migration command whenever the schema changes.
 
 The Linear webhook is the primary, near-real-time path for status updates. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) pulls the current Linear state for every non-terminal request and corrects any that drifted. Comments are always read live from Linear, so they never go stale.
 
+### Slack intake (optional)
+
+Set `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` (in Vercel → Settings → Environment Variables for prod) to enable the Slack integration. When either variable is absent the `/api/slack/*` routes do not mount and the rest of the app is unaffected.
+
+**Setup**
+
+1. Create the Slack app from [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md) — paste the manifest in [api.slack.com/apps](https://api.slack.com/apps) → "Create New App" → "From a manifest". Swap in your own domain where the manifest uses `lineardesk.vercel.app`. Install the app to your workspace and copy the signing secret and bot token into your environment.
+2. In every Slack channel where the bot will be used, run `/invite @LinearDesk`. This is required so the bot can read message attachments and images when a user creates a ticket from a message.
+
+**Usage**
+
+- `/ticket` — opens a form to file a new ticket directly from Slack.
+- "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket.
+
+Tickets created from either flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
+
+**Planned follow-up (Plan B)**
+
+Status and comment updates flowing back into the originating Slack thread are not yet implemented.
+
 ### Self-hosting (optional)
 
 The `Dockerfile` still builds a standalone Bun server (Nitro `bun` preset) if you'd rather self-host than use Vercel:
