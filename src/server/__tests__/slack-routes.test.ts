@@ -179,4 +179,172 @@ describe("slack routes", () => {
     expect(res.status).toBe(401)
     expect(slack.openView).not.toHaveBeenCalled()
   })
+
+  it("message_action opens a prefilled modal with mapped files", async () => {
+    const slack = makeSlack()
+    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "message_action",
+      trigger_id: "T2",
+      channel: { id: "C1" },
+      user: { id: "U1" },
+      message: {
+        ts: "1.1",
+        text: "screen is blank",
+        files: [
+          {
+            id: "F1",
+            name: "shot.png",
+            mimetype: "image/png",
+            url_private: "https://files/F1",
+          },
+        ],
+      },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    expect(slack.openView).toHaveBeenCalledWith("T2", expect.any(Object))
+    const view = (slack.openView as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    const meta = JSON.parse(view.private_metadata)
+    expect(meta.channel).toBe("C1")
+    expect(meta.files[0].urlPrivate).toBe("https://files/F1")
+    const descBlock = view.blocks.find(
+      (b: { block_id: string }) => b.block_id === "description"
+    )
+    expect(descBlock.element.initial_value).toContain("screen is blank")
+  })
+
+  it("view_submission happy path creates a ticket and confirms in-thread", async () => {
+    const slack = makeSlack()
+    const repo = makeRepo()
+    const linear = makeLinear()
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "i",
+      identifier: "BAS-123",
+      url: "https://l/BAS-123",
+      detailsCommentId: null,
+      state: { id: "s", name: "Triage", type: "triage" },
+    })
+    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear,
+      slack,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "view_submission",
+      user: { id: "U1" },
+      view: {
+        callback_id: "slack_ticket_submit",
+        private_metadata: JSON.stringify({
+          channel: "C1",
+          messageTs: "1.1",
+          threadTs: "1.1",
+          files: [],
+        }),
+        state: {
+          values: {
+            title: { title_input: { value: "Login broken" } },
+            description: { description_input: { value: "500 on submit" } },
+            severity: {
+              severity_input: { selected_option: { value: "high" } },
+            },
+          },
+        },
+      },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    await vi.waitFor(() => {
+      expect(repo.createRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "slack",
+          requesterEmail: "person@example.com",
+          slackChannelId: "C1",
+        })
+      )
+    })
+    await vi.waitFor(() => {
+      expect(slack.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: "C1",
+          text: expect.stringContaining("BAS-"),
+        })
+      )
+    })
+  })
+
+  it("view_submission with invalid input returns response_action errors", async () => {
+    const slack = makeSlack()
+    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "view_submission",
+      user: { id: "U1" },
+      view: {
+        callback_id: "slack_ticket_submit",
+        private_metadata: JSON.stringify({
+          channel: "C1",
+          messageTs: "1.1",
+          threadTs: "1.1",
+          files: [],
+        }),
+        state: {
+          values: {
+            title: { title_input: { value: "x" } },
+            description: { description_input: { value: "" } },
+            severity: {
+              severity_input: { selected_option: { value: "medium" } },
+            },
+          },
+        },
+      },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toMatchObject({
+      response_action: "errors",
+      errors: expect.objectContaining({
+        title: expect.any(String),
+        description: expect.any(String),
+      }),
+    })
+  })
 })

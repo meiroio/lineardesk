@@ -386,6 +386,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
 
       if (payload.type === "message_action") {
+        if (!payload.channel?.id || !payload.message?.ts) {
+          return new Response("", { status: 200 })
+        }
         const files = Array.isArray(payload.message?.files)
           ? payload.message.files.map(
               (f: {
@@ -406,9 +409,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
           buildTicketModal({
             descriptionPrefill: payload.message?.text ?? "",
             privateMetadata: {
-              channel: payload.channel.id,
-              messageTs: payload.message.ts,
-              threadTs: payload.message.thread_ts ?? payload.message.ts,
+              channel: payload.channel?.id,
+              messageTs: payload.message?.ts,
+              threadTs: payload.message?.thread_ts ?? payload.message?.ts,
               files,
             },
           })
