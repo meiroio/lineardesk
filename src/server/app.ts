@@ -14,8 +14,13 @@ import { createHelpdeskRepository } from "./repository"
 import {
   parseCreateCommentInput,
   parseCreateRequestInput,
+  parseSlackTicketInput,
   RequestValidationError,
 } from "./request-validation"
+import { createSlackGateway } from "./slack/gateway"
+import { buildTicketModal, parseTicketSubmission } from "./slack/modal"
+import { verifySlackSignature } from "./slack/signature"
+import { createSlackTicket, SlackEmailMissingError } from "./slack/ticket"
 import type {
   AppConfig,
   AuthBridge,
@@ -25,6 +30,7 @@ import type {
   LinearGateway,
   LinearIssueCommentSnapshot,
   RequestRecord,
+  SlackGateway,
   VerifyWebhook,
 } from "./types"
 import {
@@ -41,7 +47,18 @@ export type ApiDependencies = {
   repo: HelpdeskRepository
   linear: LinearGateway
   auth: AuthBridge
+  slack?: SlackGateway
   verifyWebhook?: VerifyWebhook
+}
+
+function scheduleBackground(request: Request, work: Promise<unknown>) {
+  const safe = work.catch((error) => {
+    console.error("slack background work failed", error)
+  })
+  const ctx = (request as { waitUntil?: (p: Promise<unknown>) => void })
+    .waitUntil
+  if (typeof ctx === "function") ctx(safe)
+  else void safe
 }
 
 type ResolvedApiDependencies = ApiDependencies & {
@@ -98,8 +115,8 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
       if (session instanceof Response) return session
 
-      const requests = await getDependencies().repo.listRequestsForUser(
-        session.user.id
+      const requests = await getDependencies().repo.listRequestsForEmail(
+        session.user.email
       )
       return { requests: requests.map((record) => serializeRequest(record)) }
     })
@@ -132,6 +149,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
         severity,
         linearIssue,
         linearTeamId: deps.config.linear.teamId,
+        source: "web",
       })
 
       return json({ request: serializeRequest(record) }, 201)
@@ -143,9 +161,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
       if (session instanceof Response) return session
 
-      const record = await getDependencies().repo.getRequestForUser(
+      const record = await getDependencies().repo.getRequestForEmail(
         params.id,
-        session.user.id
+        session.user.email
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -177,9 +195,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         throw error
       }
 
-      const record = await deps.repo.getRequestForUser(
+      const record = await deps.repo.getRequestForEmail(
         params.id,
-        session.user.id
+        session.user.email
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -209,9 +227,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         )
       }
 
-      const record = await deps.repo.getRequestForUser(
+      const record = await deps.repo.getRequestForEmail(
         params.id,
-        session.user.id
+        session.user.email
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -228,9 +246,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         linearStateType: state.type,
       })
 
-      const updated = await deps.repo.getRequestForUser(
+      const updated = await deps.repo.getRequestForEmail(
         params.id,
-        session.user.id
+        session.user.email
       )
       return { request: serializeRequest(updated ?? record) }
     })
@@ -316,6 +334,156 @@ export function createApiApp(dependencies?: ApiDependencies) {
 
       return json({ ok: true, ...result })
     })
+    .post("/slack/commands", async ({ request }) => {
+      const deps = getDependencies()
+      if (!deps.slack || !deps.config.slack)
+        return json({ error: "not_found" }, 404)
+      const raw = await request.text()
+      if (
+        !verifySlackSignature({
+          signingSecret: deps.config.slack.signingSecret,
+          signature: request.headers.get("x-slack-signature"),
+          timestamp: request.headers.get("x-slack-request-timestamp"),
+          rawBody: raw,
+          nowMs: Date.now(),
+        })
+      )
+        return json({ error: "bad_signature" }, 401)
+
+      const form = new URLSearchParams(raw)
+      const triggerId = form.get("trigger_id")
+      const channel = form.get("channel_id") ?? ""
+      if (!triggerId) return json({ error: "no_trigger" }, 400)
+
+      await deps.slack.openView(
+        triggerId,
+        buildTicketModal({
+          privateMetadata: { channel, messageTs: "", threadTs: "", files: [] },
+        })
+      )
+      return new Response("", { status: 200 })
+    })
+    .post("/slack/interactivity", async ({ request }) => {
+      const deps = getDependencies()
+      if (!deps.slack || !deps.config.slack)
+        return json({ error: "not_found" }, 404)
+      const raw = await request.text()
+      if (
+        !verifySlackSignature({
+          signingSecret: deps.config.slack.signingSecret,
+          signature: request.headers.get("x-slack-signature"),
+          timestamp: request.headers.get("x-slack-request-timestamp"),
+          rawBody: raw,
+          nowMs: Date.now(),
+        })
+      )
+        return json({ error: "bad_signature" }, 401)
+
+      const payload = JSON.parse(
+        new URLSearchParams(raw).get("payload") ?? "{}"
+      )
+
+      if (payload.type === "message_action") {
+        const files = Array.isArray(payload.message?.files)
+          ? payload.message.files.map(
+              (f: {
+                id: string
+                name: string
+                mimetype: string
+                url_private: string
+              }) => ({
+                id: f.id,
+                name: f.name,
+                mimetype: f.mimetype,
+                urlPrivate: f.url_private,
+              })
+            )
+          : []
+        await deps.slack.openView(
+          payload.trigger_id,
+          buildTicketModal({
+            descriptionPrefill: payload.message?.text ?? "",
+            privateMetadata: {
+              channel: payload.channel.id,
+              messageTs: payload.message.ts,
+              threadTs: payload.message.thread_ts ?? payload.message.ts,
+              files,
+            },
+          })
+        )
+        return new Response("", { status: 200 })
+      }
+
+      if (
+        payload.type === "view_submission" &&
+        payload.view?.callback_id === "slack_ticket_submit"
+      ) {
+        const parsed = parseTicketSubmission(payload)
+        let input: ReturnType<typeof parseSlackTicketInput>
+        try {
+          input = parseSlackTicketInput({
+            title: parsed.title,
+            description: parsed.description,
+            severity: parsed.severityLabel,
+          })
+        } catch (error) {
+          if (error instanceof RequestValidationError) {
+            return json(
+              { response_action: "errors", errors: error.fields },
+              200
+            )
+          }
+          throw error
+        }
+
+        const slack = deps.slack
+        const work = (async () => {
+          try {
+            const result = await createSlackTicket(
+              {
+                config: deps.config,
+                repo: deps.repo,
+                linear: deps.linear,
+                slack,
+              },
+              {
+                slackUserId: parsed.slackUserId,
+                title: input.title,
+                description: input.description,
+                severity: input.severity,
+                channel: parsed.meta.channel,
+                threadTs: parsed.meta.threadTs,
+                files: parsed.meta.files,
+              }
+            )
+            const note =
+              result.droppedImages > 0
+                ? ` (couldn't attach ${result.droppedImages} image(s))`
+                : ""
+            await slack.postMessage({
+              channel: parsed.meta.channel,
+              threadTs: parsed.meta.threadTs || undefined,
+              text: `:white_check_mark: Created *${result.issue.identifier}* — ${result.issue.url}${note}`,
+            })
+          } catch (error) {
+            const text =
+              error instanceof SlackEmailMissingError
+                ? ":warning: Your Slack account has no email, so I couldn't create a ticket."
+                : ":x: Sorry — creating the ticket failed. Please try again."
+            await slack.postMessage({
+              channel: parsed.meta.channel,
+              threadTs: parsed.meta.threadTs || undefined,
+              text,
+            })
+          }
+        })()
+
+        scheduleBackground(request, work)
+        return new Response("", { status: 200 })
+      }
+
+      return new Response("", { status: 200 })
+    })
     .mount(authHandler)
 }
 
@@ -327,6 +495,7 @@ function createDefaultDependencies(): ResolvedApiDependencies {
     repo: createHelpdeskRepository(),
     linear: createLinearGateway(config.linear),
     auth: createAuthBridge(config),
+    slack: config.slack ? createSlackGateway(config.slack.botToken) : undefined,
     verifyWebhook: ({ rawBody, signature, timestamp }) => {
       if (!signature) throw new Error("Missing Linear webhook signature")
 
@@ -380,6 +549,7 @@ function serializeRequest(
 ) {
   return {
     ...record,
+    source: record.source,
     linearDetailsCommentedAt:
       record.linearDetailsCommentedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),

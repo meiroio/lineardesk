@@ -6,11 +6,18 @@ describe("buildTicketModal", () => {
   it("builds a modal with prefilled description and private_metadata", () => {
     const view = buildTicketModal({
       descriptionPrefill: "from the thread",
-      privateMetadata: { channel: "C1", messageTs: "1.2", threadTs: "1.2", files: [] },
+      privateMetadata: {
+        channel: "C1",
+        messageTs: "1.2",
+        threadTs: "1.2",
+        files: [],
+      },
     })
     expect(view.callback_id).toBe("slack_ticket_submit")
     expect(JSON.parse(view.private_metadata).channel).toBe("C1")
-    const desc = view.blocks.find((b: { block_id?: string }) => b.block_id === "description")
+    const desc = view.blocks.find(
+      (b: { block_id?: string }) => b.block_id === "description"
+    )
     expect(JSON.stringify(desc)).toContain("from the thread")
   })
 })
@@ -21,13 +28,18 @@ describe("parseTicketSubmission", () => {
       user: { id: "U1" },
       view: {
         private_metadata: JSON.stringify({
-          channel: "C1", messageTs: "1.2", threadTs: "1.2", files: [],
+          channel: "C1",
+          messageTs: "1.2",
+          threadTs: "1.2",
+          files: [],
         }),
         state: {
           values: {
             title: { title_input: { value: "Login broken" } },
             description: { description_input: { value: "500" } },
-            severity: { severity_input: { selected_option: { value: "high" } } },
+            severity: {
+              severity_input: { selected_option: { value: "high" } },
+            },
           },
         },
       },

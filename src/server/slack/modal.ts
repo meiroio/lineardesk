@@ -71,7 +71,11 @@ export function parseTicketSubmission(payload: {
     state: {
       values: Record<
         string,
-        Record<string, { value?: string; selected_option?: { value: string } }>
+        | Record<
+            string,
+            { value?: string; selected_option?: { value: string } } | undefined
+          >
+        | undefined
       >
     }
   }

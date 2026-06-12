@@ -27,7 +27,11 @@ describe("parseSlackTicketInput", () => {
         description: "It 500s on submit",
         severity: "high",
       })
-    ).toEqual({ title: "Login broken", description: "It 500s on submit", severity: 2 })
+    ).toEqual({
+      title: "Login broken",
+      description: "It 500s on submit",
+      severity: 2,
+    })
   })
 
   it("rejects a short title and bad severity with field-keyed issues", () => {

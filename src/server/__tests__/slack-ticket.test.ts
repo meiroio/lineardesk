@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest"
 
 import { createSlackTicket, SlackEmailMissingError } from "../slack/ticket"
 
+type SlackTicketDeps = Parameters<typeof createSlackTicket>[0]
+
 const issue = {
-  id: "i", identifier: "BAS-1", url: "https://l/BAS-1",
-  detailsCommentId: null, state: { id: "s", name: "Triage", type: "triage" },
+  id: "i",
+  identifier: "BAS-1",
+  url: "https://l/BAS-1",
+  detailsCommentId: null,
+  state: { id: "s", name: "Triage", type: "triage" },
 }
 
 function deps(email: string | null) {
@@ -21,28 +26,45 @@ function deps(email: string | null) {
     slack: {
       getUserEmail: vi.fn(async () => email),
       downloadFile: vi.fn(async () => ({
-        bytes: new Uint8Array([1]), contentType: "image/png",
+        bytes: new Uint8Array([1]),
+        contentType: "image/png",
       })),
     },
-  } as never
+  }
 }
 
 describe("createSlackTicket", () => {
   it("rejects when the slack user has no email", async () => {
     await expect(
-      createSlackTicket(deps(null), {
-        slackUserId: "U1", title: "T", description: "D", severity: 2,
-        channel: "C1", threadTs: "1.2", files: [],
+      createSlackTicket(deps(null) as unknown as SlackTicketDeps, {
+        slackUserId: "U1",
+        title: "T",
+        description: "D",
+        severity: 2,
+        channel: "C1",
+        threadTs: "1.2",
+        files: [],
       })
     ).rejects.toBeInstanceOf(SlackEmailMissingError)
   })
 
   it("creates an issue + record, attributes by email, embeds images", async () => {
     const d = deps("dev@meiro.io")
-    const result = await createSlackTicket(d, {
-      slackUserId: "U1", title: "Login broken", description: "500 on submit",
-      severity: 2, channel: "C1", threadTs: "1.2",
-      files: [{ id: "F1", name: "shot.png", mimetype: "image/png", urlPrivate: "https://files/F1" }],
+    const result = await createSlackTicket(d as unknown as SlackTicketDeps, {
+      slackUserId: "U1",
+      title: "Login broken",
+      description: "500 on submit",
+      severity: 2,
+      channel: "C1",
+      threadTs: "1.2",
+      files: [
+        {
+          id: "F1",
+          name: "shot.png",
+          mimetype: "image/png",
+          urlPrivate: "https://files/F1",
+        },
+      ],
     })
 
     expect(d.linear.createHelpdeskIssue).toHaveBeenCalledWith(
@@ -54,8 +76,11 @@ describe("createSlackTicket", () => {
     )
     expect(d.repo.createRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        requesterUserId: "user-1", requesterEmail: "dev@meiro.io",
-        source: "slack", slackChannelId: "C1", slackMessageTs: "1.2",
+        requesterUserId: "user-1",
+        requesterEmail: "dev@meiro.io",
+        source: "slack",
+        slackChannelId: "C1",
+        slackMessageTs: "1.2",
       })
     )
     expect(result.issue.identifier).toBe("BAS-1")
@@ -66,10 +91,16 @@ describe("createSlackTicket", () => {
     d.slack.downloadFile = vi.fn(async () => {
       throw new Error("403")
     })
-    const result = await createSlackTicket(d, {
-      slackUserId: "U1", title: "T", description: "D", severity: 3,
-      channel: "C1", threadTs: "1.2",
-      files: [{ id: "F1", name: "x.png", mimetype: "image/png", urlPrivate: "u" }],
+    const result = await createSlackTicket(d as unknown as SlackTicketDeps, {
+      slackUserId: "U1",
+      title: "T",
+      description: "D",
+      severity: 3,
+      channel: "C1",
+      threadTs: "1.2",
+      files: [
+        { id: "F1", name: "x.png", mimetype: "image/png", urlPrivate: "u" },
+      ],
     })
     expect(result.droppedImages).toBe(1)
     expect(d.linear.createHelpdeskIssue).toHaveBeenCalled()

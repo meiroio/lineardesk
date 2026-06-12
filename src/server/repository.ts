@@ -104,7 +104,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
         )
       )
       .limit(1)
-    const row = rows[0]
+    const row = rows[0] as HelpdeskRequestRow | undefined
     return row ? toRequestRecord(row) : null
   }
 

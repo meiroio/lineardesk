@@ -28,6 +28,9 @@ function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     lastLinearSyncedAt: new Date("2026-01-01T00:00:00.000Z"),
+    source: "web",
+    slackChannelId: null,
+    slackMessageTs: null,
     ...overrides,
   }
 }
@@ -35,8 +38,9 @@ function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
 function makeRepo(open: RequestRecord[]): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
-    listRequestsForUser: vi.fn(async () => []),
-    getRequestForUser: vi.fn(async () => null),
+    getUserIdByEmail: vi.fn(async () => "u1"),
+    listRequestsForEmail: vi.fn(async () => []),
+    getRequestForEmail: vi.fn(async () => null),
     listOpenRequests: vi.fn(async () => open),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
