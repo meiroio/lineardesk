@@ -9,7 +9,7 @@ import type {
 } from "./types"
 import { getDb } from "./db/client"
 import type * as schema from "./db/schema"
-import { helpdeskRequests, linearWebhookEvents } from "./db/schema"
+import { authUsers, helpdeskRequests, linearWebhookEvents } from "./db/schema"
 
 type Database = NodePgDatabase<typeof schema>
 type HelpdeskRequestRow = typeof helpdeskRequests.$inferSelect
@@ -43,6 +43,9 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
         linearDetailsCommentedAt: input.linearIssue.detailsCommentId
           ? new Date()
           : null,
+        source: input.source ?? "web",
+        slackChannelId: input.slackChannelId ?? null,
+        slackMessageTs: input.slackMessageTs ?? null,
       })
       .returning()
     const row = rows[0] as HelpdeskRequestRow | undefined
@@ -51,13 +54,21 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return toRequestRecord(row)
   }
 
-  async listRequestsForUser(userId: string): Promise<RequestRecord[]> {
+  async getUserIdByEmail(email: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .where(eq(authUsers.email, email))
+      .limit(1)
+    return rows[0]?.id ?? null
+  }
+
+  async listRequestsForEmail(email: string): Promise<RequestRecord[]> {
     const rows = await this.db
       .select()
       .from(helpdeskRequests)
-      .where(eq(helpdeskRequests.requesterUserId, userId))
+      .where(eq(helpdeskRequests.requesterEmail, email))
       .orderBy(desc(helpdeskRequests.createdAt))
-
     return rows.map(toRequestRecord)
   }
 
@@ -79,9 +90,9 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return rows.map(toRequestRecord)
   }
 
-  async getRequestForUser(
+  async getRequestForEmail(
     id: string,
-    userId: string
+    email: string
   ): Promise<RequestRecord | null> {
     const rows = await this.db
       .select()
@@ -89,12 +100,11 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .where(
         and(
           eq(helpdeskRequests.id, id),
-          eq(helpdeskRequests.requesterUserId, userId)
+          eq(helpdeskRequests.requesterEmail, email)
         )
       )
       .limit(1)
-    const row = rows[0] as HelpdeskRequestRow | undefined
-
+    const row = rows[0]
     return row ? toRequestRecord(row) : null
   }
 
@@ -139,7 +149,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
   }
 }
 
-function toRequestRecord(row: HelpdeskRequestRow): RequestRecord {
+export function toRequestRecord(row: HelpdeskRequestRow): RequestRecord {
   return {
     id: row.id,
     requesterUserId: row.requesterUserId,
@@ -159,5 +169,8 @@ function toRequestRecord(row: HelpdeskRequestRow): RequestRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     lastLinearSyncedAt: row.lastLinearSyncedAt,
+    source: row.source === "slack" ? "slack" : "web",
+    slackChannelId: row.slackChannelId,
+    slackMessageTs: row.slackMessageTs,
   }
 }
