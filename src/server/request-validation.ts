@@ -1,5 +1,8 @@
 export class RequestValidationError extends Error {
-  constructor(readonly issues: string[]) {
+  constructor(
+    readonly issues: string[],
+    readonly fields: Record<string, string> = {}
+  ) {
     super(issues.join("; "))
     this.name = "RequestValidationError"
   }
@@ -102,4 +105,38 @@ export function parseCreateCommentInput(input: unknown): CreateCommentInput {
   if (issues.length > 0) throw new RequestValidationError(issues)
 
   return { body }
+}
+
+export function severityFromLabel(label: string): number | null {
+  return SEVERITY_PRIORITY[label.trim().toLowerCase()] ?? null
+}
+
+export type SlackTicketInput = {
+  title: string
+  description: string
+  severity: number
+}
+
+export function parseSlackTicketInput(input: unknown): SlackTicketInput {
+  const value = input && typeof input === "object" ? input : {}
+  const read = (k: string) =>
+    k in value && typeof (value as Record<string, unknown>)[k] === "string"
+      ? ((value as Record<string, string>)[k]).trim()
+      : ""
+
+  const title = read("title")
+  const description = read("description")
+  const severity = severityFromLabel(read("severity"))
+
+  const fields: Record<string, string> = {}
+  if (title.length < 3 || title.length > 160)
+    fields.title = "Title must be 3–160 characters"
+  if (description.length < 1 || description.length > 8000)
+    fields.description = "Description is required (max 8000 characters)"
+  if (severity === null) fields.severity = "Pick a severity"
+
+  if (Object.keys(fields).length > 0)
+    throw new RequestValidationError(Object.values(fields), fields)
+
+  return { title, description, severity: severity as number }
 }
