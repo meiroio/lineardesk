@@ -12,6 +12,7 @@ export function createSlackGateway(botToken: string): SlackGateway {
       },
       body: JSON.stringify(body),
     })
+    if (!res.ok) throw new Error(`Slack ${method} HTTP ${res.status}`)
     const data = (await res.json()) as { ok: boolean; error?: string } & T
     if (!data.ok) throw new Error(`Slack ${method} failed: ${data.error}`)
     return data
