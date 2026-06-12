@@ -111,18 +111,12 @@ export function severityFromLabel(label: string): number | null {
   return SEVERITY_PRIORITY[label.trim().toLowerCase()] ?? null
 }
 
-export type SlackTicketInput = {
-  title: string
-  description: string
-  severity: number
-}
-
-export function parseSlackTicketInput(input: unknown): SlackTicketInput {
+export function parseSlackTicketInput(input: unknown): CreateRequestInput {
   const value = input && typeof input === "object" ? input : {}
-  const read = (k: string) =>
-    k in value && typeof (value as Record<string, unknown>)[k] === "string"
-      ? ((value as Record<string, string>)[k]).trim()
-      : ""
+  const read = (k: string) => {
+    const raw = (value as Record<string, unknown>)[k]
+    return typeof raw === "string" ? raw.trim() : ""
+  }
 
   const title = read("title")
   const description = read("description")

@@ -12,6 +12,11 @@ describe("severityFromLabel", () => {
     expect(severityFromLabel("low")).toBe(4)
     expect(severityFromLabel("nope")).toBeNull()
   })
+
+  it("is case-insensitive and trims", () => {
+    expect(severityFromLabel("  URGENT  ")).toBe(1)
+    expect(severityFromLabel("Medium")).toBe(3)
+  })
 })
 
 describe("parseSlackTicketInput", () => {
