@@ -13,6 +13,10 @@ export type AppConfig = {
     labelName: string
     webhookSecret: string
   }
+  slack?: {
+    signingSecret: string
+    botToken: string
+  }
 }
 
 export type AuthSession = {
@@ -93,6 +97,26 @@ export type LinearIssueCommentSnapshot = {
   createdAt: Date
 }
 
+export type SlackFileRef = {
+  id: string
+  name: string
+  mimetype: string
+  urlPrivate: string
+}
+
+export type SlackGateway = {
+  openView: (triggerId: string, view: unknown) => Promise<void>
+  postMessage: (input: {
+    channel: string
+    threadTs?: string
+    text: string
+  }) => Promise<{ channel: string; ts: string }>
+  getUserEmail: (userId: string) => Promise<string | null>
+  downloadFile: (
+    urlPrivate: string
+  ) => Promise<{ bytes: Uint8Array; contentType: string }>
+}
+
 export type RequestRecord = {
   id: string
   requesterUserId: string | null
@@ -112,16 +136,22 @@ export type RequestRecord = {
   createdAt: Date
   updatedAt: Date
   lastLinearSyncedAt: Date
+  source: "web" | "slack"
+  slackChannelId: string | null
+  slackMessageTs: string | null
 }
 
 export type CreateRequestRecordInput = {
-  requesterUserId: string
+  requesterUserId: string | null
   requesterEmail: string
   title: string
   description: string
   severity: number
   linearIssue: LinearIssueSnapshot
   linearTeamId: string
+  source?: "web" | "slack"
+  slackChannelId?: string | null
+  slackMessageTs?: string | null
 }
 
 export type LinearIssueWebhookSnapshot = {
@@ -135,10 +165,11 @@ export type LinearIssueWebhookSnapshot = {
 
 export type HelpdeskRepository = {
   createRequest: (input: CreateRequestRecordInput) => Promise<RequestRecord>
-  listRequestsForUser: (userId: string) => Promise<RequestRecord[]>
-  getRequestForUser: (
+  getUserIdByEmail: (email: string) => Promise<string | null>
+  listRequestsForEmail: (email: string) => Promise<RequestRecord[]>
+  getRequestForEmail: (
     id: string,
-    userId: string
+    email: string
   ) => Promise<RequestRecord | null>
   listOpenRequests: (limit: number) => Promise<RequestRecord[]>
   hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>
