@@ -95,7 +95,7 @@ export type LinearIssueCommentSnapshot = {
 
 export type RequestRecord = {
   id: string
-  requesterUserId: string
+  requesterUserId: string | null
   requesterEmail: string
   title: string
   description: string

@@ -95,7 +95,7 @@ export const helpdeskRequests = pgTable(
   "helpdesk_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    requesterUserId: text("requester_user_id").notNull(),
+    requesterUserId: text("requester_user_id"),
     requesterEmail: text("requester_email").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull(),
@@ -111,6 +111,9 @@ export const helpdeskRequests = pgTable(
     linearDetailsCommentedAt: timestamp("linear_details_commented_at", {
       withTimezone: true,
     }),
+    source: text("source").notNull().default("web"),
+    slackChannelId: text("slack_channel_id"),
+    slackMessageTs: text("slack_message_ts"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
