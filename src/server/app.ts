@@ -55,6 +55,8 @@ function scheduleBackground(request: Request, work: Promise<unknown>) {
   const safe = work.catch((error) => {
     console.error("slack background work failed", error)
   })
+  // Edge/serverless runtimes (Vercel/Workers) expose waitUntil to keep the
+  // function alive for post-response work; fall back to fire-and-forget locally.
   const ctx = (request as { waitUntil?: (p: Promise<unknown>) => void })
     .waitUntil
   if (typeof ctx === "function") ctx(safe)
@@ -474,6 +476,8 @@ export function createApiApp(dependencies?: ApiDependencies) {
               channel: parsed.meta.channel,
               threadTs: parsed.meta.threadTs || undefined,
               text,
+            }).catch((postError) => {
+              console.error("slack fallback postMessage failed", postError)
             })
           }
         })()
@@ -549,7 +553,6 @@ function serializeRequest(
 ) {
   return {
     ...record,
-    source: record.source,
     linearDetailsCommentedAt:
       record.linearDetailsCommentedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
