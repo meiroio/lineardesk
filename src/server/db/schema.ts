@@ -128,6 +128,7 @@ export const helpdeskRequests = pgTable(
   },
   (table) => [
     index("helpdesk_requests_requester_user_id_idx").on(table.requesterUserId),
+    index("helpdesk_requests_requester_email_idx").on(table.requesterEmail),
     index("helpdesk_requests_linear_issue_id_idx").on(table.linearIssueId),
     index("helpdesk_requests_linear_details_comment_id_idx").on(
       table.linearDetailsCommentId

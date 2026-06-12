@@ -1,0 +1,1 @@
+CREATE INDEX "helpdesk_requests_requester_email_idx" ON "helpdesk_requests" USING btree ("requester_email");
