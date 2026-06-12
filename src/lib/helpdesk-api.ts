@@ -9,6 +9,7 @@ export type PortalRequest = {
   linearStateId: string
   linearStateName: string
   linearStateType: string
+  source: "web" | "slack"
   severity: number | null
   linearDetailsCommentId: string | null
   linearDetailsCommentedAt: string | null
