@@ -38,6 +38,13 @@ function required(env: Env, name: string) {
 }
 
 export function readAppConfig(env: Env = process.env): AppConfig {
+  const slackSigningSecret = env.SLACK_SIGNING_SECRET?.trim()
+  const slackBotToken = env.SLACK_BOT_TOKEN?.trim()
+  const slack =
+    slackSigningSecret && slackBotToken
+      ? { signingSecret: slackSigningSecret, botToken: slackBotToken }
+      : undefined
+
   return {
     allowedEmailDomains: parseAllowedDomains(
       required(env, "ALLOWED_EMAIL_DOMAINS")
@@ -57,5 +64,6 @@ export function readAppConfig(env: Env = process.env): AppConfig {
       labelName: env.LINEAR_LABEL_NAME?.trim() || DEFAULT_LINEAR_LABEL_NAME,
       webhookSecret: required(env, "LINEAR_WEBHOOK_SECRET"),
     },
+    slack,
   }
 }

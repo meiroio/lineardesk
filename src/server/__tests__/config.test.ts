@@ -41,3 +41,29 @@ describe("readAppConfig", () => {
     expect(config.linear.labelName).toBe("Bug")
   })
 })
+
+const base = {
+  ALLOWED_EMAIL_DOMAINS: "example.com",
+  DATABASE_URL: "postgres://x@localhost:5432/x",
+  BETTER_AUTH_SECRET: "s",
+  BETTER_AUTH_URL: "http://localhost:3000",
+  GOOGLE_CLIENT_ID: "g",
+  GOOGLE_CLIENT_SECRET: "gs",
+  LINEAR_API_KEY: "lin",
+  LINEAR_WEBHOOK_SECRET: "wh",
+}
+
+describe("readAppConfig slack", () => {
+  it("omits slack when env is absent", () => {
+    expect(readAppConfig(base).slack).toBeUndefined()
+  })
+
+  it("includes slack when both vars are present", () => {
+    const config = readAppConfig({
+      ...base,
+      SLACK_SIGNING_SECRET: "sign",
+      SLACK_BOT_TOKEN: "xoxb-1",
+    })
+    expect(config.slack).toEqual({ signingSecret: "sign", botToken: "xoxb-1" })
+  })
+})
