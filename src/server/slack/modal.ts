@@ -7,6 +7,13 @@ export type TicketModalMeta = {
   files: SlackFileRef[]
 }
 
+export type TicketModalPrefill = {
+  title?: string
+  expectedBehaviour?: string
+  currentBehaviour?: string
+  stepsToReproduce?: string
+}
+
 const SEVERITY_OPTIONS = [
   { text: "Urgent", value: "urgent" },
   { text: "High", value: "high" },
@@ -14,10 +21,51 @@ const SEVERITY_OPTIONS = [
   { text: "Low", value: "low" },
 ]
 
+const TEXT_FIELDS: {
+  id: string
+  label: string
+  key: keyof TicketModalPrefill
+}[] = [
+  { id: "title", label: "Title", key: "title" },
+  {
+    id: "expectedBehaviour",
+    label: "Expected behaviour",
+    key: "expectedBehaviour",
+  },
+  {
+    id: "currentBehaviour",
+    label: "Current behaviour",
+    key: "currentBehaviour",
+  },
+  {
+    id: "stepsToReproduce",
+    label: "Steps to reproduce",
+    key: "stepsToReproduce",
+  },
+]
+
+export function buildLoadingModal() {
+  return {
+    type: "modal",
+    title: { type: "plain_text", text: "New LinearDesk ticket" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":sparkles: Drafting your ticket from the thread…",
+        },
+      },
+    ],
+  }
+}
+
 export function buildTicketModal(input: {
-  descriptionPrefill?: string
+  prefill?: TicketModalPrefill
   privateMetadata: TicketModalMeta
 }) {
+  const prefill = input.prefill ?? {}
   return {
     type: "modal",
     callback_id: "slack_ticket_submit",
@@ -26,23 +74,17 @@ export function buildTicketModal(input: {
     submit: { type: "plain_text", text: "Create" },
     close: { type: "plain_text", text: "Cancel" },
     blocks: [
-      {
+      ...TEXT_FIELDS.map((f) => ({
         type: "input",
-        block_id: "title",
-        label: { type: "plain_text", text: "Title" },
-        element: { type: "plain_text_input", action_id: "title_input" },
-      },
-      {
-        type: "input",
-        block_id: "description",
-        label: { type: "plain_text", text: "Description" },
+        block_id: f.id,
+        label: { type: "plain_text", text: f.label },
         element: {
           type: "plain_text_input",
-          action_id: "description_input",
-          multiline: true,
-          initial_value: input.descriptionPrefill ?? "",
+          action_id: `${f.id}_input`,
+          multiline: f.id !== "title",
+          initial_value: prefill[f.key] ?? "",
         },
-      },
+      })),
       {
         type: "input",
         block_id: "severity",
@@ -81,10 +123,13 @@ export function parseTicketSubmission(payload: {
   }
 }) {
   const v = payload.view.state.values
+  const field = (id: string) => v[id]?.[`${id}_input`]?.value?.trim() ?? ""
   return {
     slackUserId: payload.user.id,
-    title: v.title?.title_input?.value?.trim() ?? "",
-    description: v.description?.description_input?.value?.trim() ?? "",
+    title: field("title"),
+    expectedBehaviour: field("expectedBehaviour"),
+    currentBehaviour: field("currentBehaviour"),
+    stepsToReproduce: field("stepsToReproduce"),
     severityLabel: v.severity?.severity_input?.selected_option?.value ?? "",
     meta: JSON.parse(payload.view.private_metadata) as TicketModalMeta,
   }

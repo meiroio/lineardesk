@@ -1,55 +1,75 @@
 import { describe, expect, it } from "vitest"
 
-import { buildTicketModal, parseTicketSubmission } from "../slack/modal"
+import {
+  buildLoadingModal,
+  buildTicketModal,
+  parseTicketSubmission,
+} from "../slack/modal"
+
+const meta = { channel: "C1", messageTs: "1.1", threadTs: "1.1", files: [] }
+
+describe("buildLoadingModal", () => {
+  it("is an input-less modal with a drafting message and no submit", () => {
+    const view = buildLoadingModal()
+    expect(view.type).toBe("modal")
+    expect("submit" in view).toBe(false)
+    expect(JSON.stringify(view.blocks)).toContain("Drafting")
+    expect(JSON.stringify(view.blocks)).not.toContain('"type":"input"')
+  })
+})
 
 describe("buildTicketModal", () => {
-  it("builds a modal with prefilled description and private_metadata", () => {
+  it("builds the 5-field form and pre-fills from draft", () => {
     const view = buildTicketModal({
-      descriptionPrefill: "from the thread",
-      privateMetadata: {
-        channel: "C1",
-        messageTs: "1.2",
-        threadTs: "1.2",
-        files: [],
+      prefill: {
+        title: "CSV export 500s",
+        expectedBehaviour: "works",
+        currentBehaviour: "500",
+        stepsToReproduce: "click export",
       },
+      privateMetadata: meta,
     })
     expect(view.callback_id).toBe("slack_ticket_submit")
+    const ids = view.blocks
+      .map((b: { block_id?: string }) => b.block_id)
+      .filter(Boolean)
+    expect(ids).toEqual([
+      "title",
+      "expectedBehaviour",
+      "currentBehaviour",
+      "stepsToReproduce",
+      "severity",
+    ])
+    expect(JSON.stringify(view.blocks)).toContain("click export")
     expect(JSON.parse(view.private_metadata).channel).toBe("C1")
-    const desc = view.blocks.find(
-      (b: { block_id?: string }) => b.block_id === "description"
-    )
-    expect(JSON.stringify(desc)).toContain("from the thread")
   })
 })
 
 describe("parseTicketSubmission", () => {
-  it("extracts field values + severity + private_metadata", () => {
+  it("extracts the five fields + meta", () => {
     const payload = {
       user: { id: "U1" },
       view: {
-        private_metadata: JSON.stringify({
-          channel: "C1",
-          messageTs: "1.2",
-          threadTs: "1.2",
-          files: [],
-        }),
+        private_metadata: JSON.stringify(meta),
         state: {
           values: {
-            title: { title_input: { value: "Login broken" } },
-            description: { description_input: { value: "500" } },
-            severity: {
-              severity_input: { selected_option: { value: "high" } },
-            },
+            title: { title_input: { value: "T" } },
+            expectedBehaviour: { expectedBehaviour_input: { value: "E" } },
+            currentBehaviour: { currentBehaviour_input: { value: "C" } },
+            stepsToReproduce: { stepsToReproduce_input: { value: "S" } },
+            severity: { severity_input: { selected_option: { value: "high" } } },
           },
         },
       },
     }
     expect(parseTicketSubmission(payload)).toEqual({
       slackUserId: "U1",
-      title: "Login broken",
-      description: "500",
+      title: "T",
+      expectedBehaviour: "E",
+      currentBehaviour: "C",
+      stepsToReproduce: "S",
       severityLabel: "high",
-      meta: { channel: "C1", messageTs: "1.2", threadTs: "1.2", files: [] },
+      meta,
     })
   })
 })
