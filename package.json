@@ -14,7 +14,8 @@
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:prod": "bun run scripts/migrate-prod.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

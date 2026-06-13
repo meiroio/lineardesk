@@ -57,9 +57,13 @@ Linear defaults:
 
 LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](https://neon.tech) Postgres database. The build switches to Nitro's Vercel preset automatically — Vercel sets `VERCEL=1`, which `vite.config.ts` uses to emit the Vercel Build Output (`.vercel/output`).
 
-1. **Neon database** — create a project and copy two connection strings: the **pooled** URL (host contains `-pooler`) for the app runtime, and the **direct** URL for migrations. Apply the schema against the direct URL:
+1. **Neon database** — create a project and copy two connection strings: the **pooled** URL (host contains `-pooler`) for the app runtime, and the **direct/unpooled** URL for migrations. `drizzle-kit migrate` fails through Neon's pooler (PgBouncer), so migrations must use the unpooled URL:
 
    ```bash
+   # if DATABASE_URL_UNPOOLED is in your env (Neon/Vercel provide it):
+   bun run db:migrate:prod
+
+   # or pass the direct URL explicitly:
    DATABASE_URL='<neon-direct-url>' bun run db:migrate
    ```
 
@@ -76,7 +80,7 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
 
 5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook`. This keeps request statuses current in near-real-time.
 
-Re-run the migration command whenever the schema changes.
+**Whenever the schema changes, apply the migration to prod _before or with_ the deploy that depends on it** — run `bun run db:migrate:prod`. The Vercel build does **not** run migrations, so shipping schema-dependent code ahead of its migration will 500 every query against the changed table until the migration lands.
 
 ### Status sync
 
