@@ -37,7 +37,14 @@ export function createSlackGateway(botToken: string): SlackGateway {
 
   return {
     async openView(triggerId, view) {
-      await call("views.open", { trigger_id: triggerId, view })
+      const data = await call<{ view: { id: string } }>("views.open", {
+        trigger_id: triggerId,
+        view,
+      })
+      return data.view.id
+    },
+    async updateView(viewId, view) {
+      await call("views.update", { view_id: viewId, view })
     },
     async postMessage(input) {
       const data = await call<{ ts: string; channel: string }>(
@@ -59,6 +66,21 @@ export function createSlackGateway(botToken: string): SlackGateway {
         message_ts: input.messageTs,
       })
       return data.permalink
+    },
+    async getThreadReplies(input) {
+      const data = await callGet<{
+        messages?: { user?: string; text?: string }[]
+      }>("conversations.replies", {
+        channel: input.channel,
+        ts: input.threadTs,
+        limit: "200",
+      })
+      return {
+        messages: (data.messages ?? []).map((m) => ({
+          user: m.user ?? null,
+          text: m.text ?? "",
+        })),
+      }
     },
     async downloadFile(urlPrivate) {
       const res = await fetch(urlPrivate, {

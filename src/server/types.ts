@@ -109,20 +109,25 @@ export type SlackFileRef = {
 }
 
 export type SlackGateway = {
-  openView: (triggerId: string, view: unknown) => Promise<void>
+  openView: (triggerId: string, view: unknown) => Promise<string>
+  updateView: (viewId: string, view: unknown) => Promise<void>
   postMessage: (input: {
     channel: string
     threadTs?: string
     text: string
   }) => Promise<{ channel: string; ts: string }>
   getUserEmail: (userId: string) => Promise<string | null>
-  downloadFile: (
-    urlPrivate: string
-  ) => Promise<{ bytes: Uint8Array; contentType: string }>
   getPermalink: (input: {
     channel: string
     messageTs: string
   }) => Promise<string>
+  getThreadReplies: (input: {
+    channel: string
+    threadTs: string
+  }) => Promise<{ messages: { user: string | null; text: string }[] }>
+  downloadFile: (
+    urlPrivate: string
+  ) => Promise<{ bytes: Uint8Array; contentType: string }>
 }
 
 export type RequestRecord = {
