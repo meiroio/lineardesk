@@ -182,7 +182,10 @@ describe("slack routes", () => {
 
   it("message_action opens a prefilled modal with mapped files", async () => {
     const slack = makeSlack()
-    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
     const app = createApiApp({
       config: cfg,
       repo: makeRepo(),
@@ -232,14 +235,19 @@ describe("slack routes", () => {
     const slack = makeSlack()
     const repo = makeRepo()
     const linear = makeLinear()
-    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "i",
-      identifier: "BAS-123",
-      url: "https://l/BAS-123",
-      detailsCommentId: null,
-      state: { id: "s", name: "Triage", type: "triage" },
-    })
-    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {
+        id: "i",
+        identifier: "BAS-123",
+        url: "https://l/BAS-123",
+        detailsCommentId: null,
+        state: { id: "s", name: "Triage", type: "triage" },
+      }
+    )
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
     const app = createApiApp({
       config: cfg,
       repo,
@@ -299,7 +307,10 @@ describe("slack routes", () => {
 
   it("view_submission with invalid input returns response_action errors", async () => {
     const slack = makeSlack()
-    const cfg = { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } }
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
     const app = createApiApp({
       config: cfg,
       repo: makeRepo(),

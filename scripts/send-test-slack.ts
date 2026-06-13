@@ -46,7 +46,8 @@ const body = new URLSearchParams({
 // Slack signs with "v0:<timestamp>:<body>" using HMAC-SHA256.
 const ts = Math.floor(Date.now() / 1000).toString()
 const sigBase = `v0:${ts}:${body}`
-const signature = "v0=" + createHmac("sha256", SECRET).update(sigBase).digest("hex")
+const signature =
+  "v0=" + createHmac("sha256", SECRET).update(sigBase).digest("hex")
 
 const res = await fetch(url, {
   method: "POST",
