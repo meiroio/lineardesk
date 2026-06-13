@@ -289,6 +289,61 @@ describe("slack routes", () => {
     })
   })
 
+  it("falls back to a message-prefilled form when the AI step fails", async () => {
+    const slack = makeSlack()
+    const gemini = makeGemini()
+    gemini.extractTicketDraft = vi.fn(async () => {
+      throw new Error("gemini down")
+    })
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s" }],
+    }))
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-2.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack,
+      gemini,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "message_action",
+      trigger_id: "T4",
+      channel: { id: "C1" },
+      user: { id: "U1" },
+      message: { ts: "1.1", text: "the export button 500s" },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    await vi.waitFor(() => {
+      expect(slack.updateView).toHaveBeenCalledWith(
+        "V1",
+        expect.objectContaining({ callback_id: "slack_ticket_submit" })
+      )
+    })
+    // the fallback form carries the original message text in Current behaviour
+    const updateArg = (slack.updateView as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as {
+      blocks: { block_id?: string; element?: { initial_value?: string } }[]
+    }
+    const current = updateArg.blocks.find(
+      (b) => b.block_id === "currentBehaviour"
+    )
+    expect(current?.element?.initial_value).toContain("the export button 500s")
+  })
+
   it("opens the form directly when gemini is unconfigured", async () => {
     const slack = makeSlack()
     const cfg = {

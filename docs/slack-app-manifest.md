@@ -27,3 +27,5 @@ settings:
     is_enabled: true
     request_url: https://lineardesk.vercel.app/api/slack/interactivity
 ```
+
+> **DM limitation.** The `channels:history` and `groups:history` scopes cover public and private channels. Threads in **DMs or group DMs are not read** — that would require `im:history` / `mpim:history`, which are not included. When the shortcut is triggered from a DM, the AI-draft step is skipped and the modal opens pre-filled with the triggering message text only; ticket creation still works normally.
