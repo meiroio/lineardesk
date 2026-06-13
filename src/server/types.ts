@@ -115,6 +115,10 @@ export type SlackGateway = {
   downloadFile: (
     urlPrivate: string
   ) => Promise<{ bytes: Uint8Array; contentType: string }>
+  getPermalink: (input: {
+    channel: string
+    messageTs: string
+  }) => Promise<string>
 }
 
 export type RequestRecord = {

@@ -19,7 +19,7 @@ export type SlackTicketDeps = {
   config: Pick<AppConfig, "linear">
   repo: Pick<HelpdeskRepository, "getUserIdByEmail" | "createRequest">
   linear: Pick<LinearGateway, "createHelpdeskIssue" | "uploadAsset">
-  slack: Pick<SlackGateway, "getUserEmail" | "downloadFile">
+  slack: Pick<SlackGateway, "getUserEmail" | "downloadFile" | "getPermalink">
 }
 
 export type CreateSlackTicketInput = {
@@ -65,10 +65,28 @@ export async function createSlackTicket(
     }
   }
 
-  const description =
-    markdown.length > 0
-      ? `${input.description}\n\n${markdown.join("\n")}`
-      : input.description
+  // Link back to the originating Slack thread (shortcut flow only — a blank
+  // threadTs means a /ticket with no source message). Non-fatal: a failed
+  // permalink lookup must not block ticket creation.
+  let threadLink: string | null = null
+  if (input.threadTs) {
+    try {
+      threadLink = await deps.slack.getPermalink({
+        channel: input.channel,
+        messageTs: input.threadTs,
+      })
+    } catch {
+      threadLink = null
+    }
+  }
+
+  const description = [
+    input.description,
+    markdown.length > 0 ? markdown.join("\n") : null,
+    threadLink ? `Slack thread: ${threadLink}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 
   const issue = await deps.linear.createHelpdeskIssue({
     title: input.title,

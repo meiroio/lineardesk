@@ -53,6 +53,13 @@ export function createSlackGateway(botToken: string): SlackGateway {
       )
       return data.user.profile?.email ?? null
     },
+    async getPermalink(input) {
+      const data = await callGet<{ permalink: string }>("chat.getPermalink", {
+        channel: input.channel,
+        message_ts: input.messageTs,
+      })
+      return data.permalink
+    },
     async downloadFile(urlPrivate) {
       const res = await fetch(urlPrivate, {
         headers: { authorization: `Bearer ${botToken}` },

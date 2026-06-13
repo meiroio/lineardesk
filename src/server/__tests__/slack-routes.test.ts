@@ -98,6 +98,7 @@ function makeSlack(): SlackGateway {
       bytes: new Uint8Array([1]),
       contentType: "image/png",
     })),
+    getPermalink: vi.fn(async () => "https://acme.slack.com/archives/C1/p12"),
   }
 }
 

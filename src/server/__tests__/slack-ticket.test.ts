@@ -29,6 +29,7 @@ function deps(email: string | null) {
         bytes: new Uint8Array([1]),
         contentType: "image/png",
       })),
+      getPermalink: vi.fn(async () => "https://acme.slack.com/archives/C1/p12"),
     },
   }
 }
@@ -74,6 +75,17 @@ describe("createSlackTicket", () => {
         description: expect.stringContaining("![shot.png](https://cdn/x.png)"),
       })
     )
+    expect(d.linear.createHelpdeskIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining(
+          "Slack thread: https://acme.slack.com/archives/C1/p12"
+        ),
+      })
+    )
+    expect(d.slack.getPermalink).toHaveBeenCalledWith({
+      channel: "C1",
+      messageTs: "1.2",
+    })
     expect(d.repo.createRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         requesterUserId: "user-1",
