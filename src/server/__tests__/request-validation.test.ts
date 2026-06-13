@@ -47,6 +47,25 @@ describe("parseCreateRequestInput", () => {
       parseCreateRequestInput({ ...valid, expectedBehaviour: "x".repeat(5001) })
     ).toThrow(RequestValidationError)
   })
+
+  it("exposes per-field errors keyed by field name", () => {
+    try {
+      parseCreateRequestInput({
+        title: "x",
+        expectedBehaviour: "",
+        currentBehaviour: "ok",
+        stepsToReproduce: "ok",
+        severity: "high",
+      })
+      throw new Error("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(RequestValidationError)
+      const fields = (error as RequestValidationError).fields
+      expect(Object.keys(fields)).toContain("title")
+      expect(Object.keys(fields)).toContain("expectedBehaviour")
+      expect(fields.currentBehaviour).toBeUndefined()
+    }
+  })
 })
 
 describe("parseCreateCommentInput", () => {

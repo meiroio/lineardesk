@@ -39,6 +39,7 @@ export function mergeBugReportSections(input: {
 
 export function parseCreateRequestInput(input: unknown): CreateRequestInput {
   const issues: string[] = []
+  const fields: Record<string, string> = {}
   const value = input && typeof input === "object" ? input : {}
 
   const title =
@@ -62,25 +63,43 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
       ? value.severity.trim().toLowerCase()
       : ""
 
-  if (title.length < 3) issues.push("Title must be at least 3 characters")
-  if (title.length > 160) issues.push("Title must be at most 160 characters")
+  if (title.length < 3) {
+    const msg = "Title must be at least 3 characters"
+    issues.push(msg)
+    fields.title = msg
+  }
+  if (title.length > 160) {
+    const msg = "Title must be at most 160 characters"
+    issues.push(msg)
+    fields.title = msg
+  }
 
-  const sections: ReadonlyArray<readonly [string, string]> = [
-    ["Expected behaviour", expectedBehaviour],
-    ["Current behaviour", currentBehaviour],
-    ["Steps to reproduce", stepsToReproduce],
+  const sections: ReadonlyArray<readonly [string, string, string]> = [
+    ["expectedBehaviour", "Expected behaviour", expectedBehaviour],
+    ["currentBehaviour", "Current behaviour", currentBehaviour],
+    ["stepsToReproduce", "Steps to reproduce", stepsToReproduce],
   ]
-  for (const [label, field] of sections) {
-    if (field.length < 1) issues.push(`${label} is required`)
-    if (field.length > 5000)
-      issues.push(`${label} must be at most 5000 characters`)
+  for (const [key, label, field] of sections) {
+    if (field.length < 1) {
+      const msg = `${label} is required`
+      issues.push(msg)
+      fields[key] = msg
+    }
+    if (field.length > 5000) {
+      const msg = `${label} must be at most 5000 characters`
+      issues.push(msg)
+      fields[key] = msg
+    }
   }
 
   const severity = SEVERITY_PRIORITY[severityLabel]
-  if (!severity)
-    issues.push("Severity must be one of: urgent, high, medium, low")
+  if (!severity) {
+    const msg = "Severity must be one of: urgent, high, medium, low"
+    issues.push(msg)
+    fields.severity = msg
+  }
 
-  if (issues.length > 0) throw new RequestValidationError(issues)
+  if (issues.length > 0) throw new RequestValidationError(issues, fields)
 
   return {
     title,
