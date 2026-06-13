@@ -18,6 +18,23 @@ export function createSlackGateway(botToken: string): SlackGateway {
     return data
   }
 
+  // Read methods (e.g. users.info) don't parse args from a JSON body — Slack
+  // expects them as query params. Sending JSON yields confusing errors like
+  // user_not_found because the arg never reaches the API.
+  async function callGet<T>(
+    method: string,
+    params: Record<string, string>
+  ): Promise<T> {
+    const query = new URLSearchParams(params).toString()
+    const res = await fetch(`${API}/${method}?${query}`, {
+      headers: { authorization: `Bearer ${botToken}` },
+    })
+    if (!res.ok) throw new Error(`Slack ${method} HTTP ${res.status}`)
+    const data = (await res.json()) as { ok: boolean; error?: string } & T
+    if (!data.ok) throw new Error(`Slack ${method} failed: ${data.error}`)
+    return data
+  }
+
   return {
     async openView(triggerId, view) {
       await call("views.open", { trigger_id: triggerId, view })
@@ -30,7 +47,7 @@ export function createSlackGateway(botToken: string): SlackGateway {
       return { channel: data.channel, ts: data.ts }
     },
     async getUserEmail(userId) {
-      const data = await call<{ user: { profile?: { email?: string } } }>(
+      const data = await callGet<{ user: { profile?: { email?: string } } }>(
         "users.info",
         { user: userId }
       )
