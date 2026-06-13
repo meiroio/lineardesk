@@ -14,7 +14,6 @@ import { createHelpdeskRepository } from "./repository"
 import {
   parseCreateCommentInput,
   parseCreateRequestInput,
-  parseSlackTicketInput,
   RequestValidationError,
 } from "./request-validation"
 import { createSlackGateway } from "./slack/gateway"
@@ -407,7 +406,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
         await deps.slack.openView(
           payload.trigger_id,
           buildTicketModal({
-            descriptionPrefill: payload.message?.text ?? "",
+            prefill: { currentBehaviour: payload.message?.text ?? "" },
             privateMetadata: {
               channel: payload.channel?.id,
               messageTs: payload.message?.ts,
@@ -424,11 +423,13 @@ export function createApiApp(dependencies?: ApiDependencies) {
         payload.view?.callback_id === "slack_ticket_submit"
       ) {
         const parsed = parseTicketSubmission(payload)
-        let input: ReturnType<typeof parseSlackTicketInput>
+        let input: ReturnType<typeof parseCreateRequestInput>
         try {
-          input = parseSlackTicketInput({
+          input = parseCreateRequestInput({
             title: parsed.title,
-            description: parsed.description,
+            expectedBehaviour: parsed.expectedBehaviour,
+            currentBehaviour: parsed.currentBehaviour,
+            stepsToReproduce: parsed.stepsToReproduce,
             severity: parsed.severityLabel,
           })
         } catch (error) {

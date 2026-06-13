@@ -46,8 +46,7 @@ export function buildTranscript(
 
 export function parseTicketDraft(text: string): TicketDraft {
   const raw = JSON.parse(text) as Record<string, unknown>
-  const str = (k: string) =>
-    typeof raw[k] === "string" ? (raw[k] as string) : ""
+  const str = (k: string) => (typeof raw[k] === "string" ? raw[k] : "")
   return {
     title: str("title"),
     expectedBehaviour: str("expectedBehaviour"),

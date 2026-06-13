@@ -91,7 +91,8 @@ function slackHeaders(secret: string, body: string) {
 
 function makeSlack(): SlackGateway {
   return {
-    openView: vi.fn(async () => {}),
+    openView: vi.fn(async () => "V1"),
+    updateView: vi.fn(async () => {}),
     postMessage: vi.fn(async () => ({ channel: "C1", ts: "1.2" })),
     getUserEmail: vi.fn(async () => "person@example.com"),
     downloadFile: vi.fn(async () => ({
@@ -99,6 +100,7 @@ function makeSlack(): SlackGateway {
       contentType: "image/png",
     })),
     getPermalink: vi.fn(async () => "https://acme.slack.com/archives/C1/p12"),
+    getThreadReplies: vi.fn(async () => ({ messages: [] })),
   }
 }
 
@@ -227,7 +229,7 @@ describe("slack routes", () => {
     expect(meta.channel).toBe("C1")
     expect(meta.files[0].urlPrivate).toBe("https://files/F1")
     const descBlock = view.blocks.find(
-      (b: { block_id: string }) => b.block_id === "description"
+      (b: { block_id: string }) => b.block_id === "currentBehaviour"
     )
     expect(descBlock.element.initial_value).toContain("screen is blank")
   })
@@ -270,7 +272,19 @@ describe("slack routes", () => {
         state: {
           values: {
             title: { title_input: { value: "Login broken" } },
-            description: { description_input: { value: "500 on submit" } },
+            expectedBehaviour: {
+              expectedBehaviour_input: {
+                value: "Should redirect to dashboard",
+              },
+            },
+            currentBehaviour: {
+              currentBehaviour_input: { value: "500 on submit" },
+            },
+            stepsToReproduce: {
+              stepsToReproduce_input: {
+                value: "1. Enter credentials 2. Submit",
+              },
+            },
             severity: {
               severity_input: { selected_option: { value: "high" } },
             },
@@ -333,7 +347,15 @@ describe("slack routes", () => {
         state: {
           values: {
             title: { title_input: { value: "x" } },
-            description: { description_input: { value: "" } },
+            expectedBehaviour: {
+              expectedBehaviour_input: { value: "" },
+            },
+            currentBehaviour: {
+              currentBehaviour_input: { value: "Something broken" },
+            },
+            stepsToReproduce: {
+              stepsToReproduce_input: { value: "1. Do it" },
+            },
             severity: {
               severity_input: { selected_option: { value: "medium" } },
             },
@@ -353,10 +375,8 @@ describe("slack routes", () => {
     const body = await res.json()
     expect(body).toMatchObject({
       response_action: "errors",
-      errors: expect.objectContaining({
-        title: expect.any(String),
-        description: expect.any(String),
-      }),
+      errors: expect.any(Object),
     })
+    expect(body.errors.expectedBehaviour).toBeDefined()
   })
 })
