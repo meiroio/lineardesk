@@ -45,6 +45,14 @@ export function readAppConfig(env: Env = process.env): AppConfig {
       ? { signingSecret: slackSigningSecret, botToken: slackBotToken }
       : undefined
 
+  const geminiApiKey = env.GEMINI_API_KEY?.trim()
+  const gemini = geminiApiKey
+    ? {
+        apiKey: geminiApiKey,
+        model: env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
+      }
+    : undefined
+
   return {
     allowedEmailDomains: parseAllowedDomains(
       required(env, "ALLOWED_EMAIL_DOMAINS")
@@ -65,5 +73,6 @@ export function readAppConfig(env: Env = process.env): AppConfig {
       webhookSecret: required(env, "LINEAR_WEBHOOK_SECRET"),
     },
     slack,
+    gemini,
   }
 }

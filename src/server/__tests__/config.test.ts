@@ -67,3 +67,25 @@ describe("readAppConfig slack", () => {
     expect(config.slack).toEqual({ signingSecret: "sign", botToken: "xoxb-1" })
   })
 })
+
+describe("readAppConfig gemini", () => {
+  it("omits gemini when GEMINI_API_KEY is absent", () => {
+    expect(readAppConfig(base).gemini).toBeUndefined()
+  })
+
+  it("includes gemini with a default model when the key is present", () => {
+    expect(readAppConfig({ ...base, GEMINI_API_KEY: "g-key" }).gemini).toEqual({
+      apiKey: "g-key",
+      model: "gemini-2.5-flash",
+    })
+  })
+
+  it("honors GEMINI_MODEL override", () => {
+    const config = readAppConfig({
+      ...base,
+      GEMINI_API_KEY: "g-key",
+      GEMINI_MODEL: "gemini-2.0-flash",
+    })
+    expect(config.gemini?.model).toBe("gemini-2.0-flash")
+  })
+})

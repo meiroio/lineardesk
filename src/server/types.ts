@@ -17,6 +17,10 @@ export type AppConfig = {
     signingSecret: string
     botToken: string
   }
+  gemini?: {
+    apiKey: string
+    model: string
+  }
 }
 
 export type AuthSession = {
@@ -196,4 +200,15 @@ export type VerifyWebhook = (input: {
 export type AuthBridge = {
   handler?: (request: Request) => Promise<Response> | Response
   getSession: (headers: Headers) => Promise<AuthSession | null>
+}
+
+export type TicketDraft = {
+  title: string
+  expectedBehaviour: string
+  currentBehaviour: string
+  stepsToReproduce: string
+}
+
+export type GeminiGateway = {
+  extractTicketDraft: (transcript: string) => Promise<TicketDraft>
 }
