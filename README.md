@@ -75,6 +75,9 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS`
    - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
    - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
+   - `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` — optional; omit to disable Slack intake
+   - `GEMINI_API_KEY` — optional; enables AI pre-fill of the Slack ticket modal from the thread
+   - `GEMINI_MODEL` — optional override; defaults to `gemini-2.5-flash`
 
 4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
 
@@ -95,10 +98,14 @@ Set `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` (in Vercel → Settings → Env
 1. Create the Slack app from [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md) — paste the manifest in [api.slack.com/apps](https://api.slack.com/apps) → "Create New App" → "From a manifest". Swap in your own domain where the manifest uses `lineardesk.vercel.app`. Install the app to your workspace and copy the signing secret and bot token into your environment.
 2. In every Slack channel where the bot will be used, run `/invite @LinearDesk`. This is required so the bot can read message attachments and images when a user creates a ticket from a message.
 
+**AI pre-fill (optional)**
+
+With `GEMINI_API_KEY` set, the "Create LinearDesk ticket" message shortcut reads the **whole thread** and uses Gemini Flash to draft the ticket Title, Expected Behaviour, Current Behaviour, and Steps to Reproduce. The user reviews and edits the draft, picks severity, and submits. Without the key the shortcut opens the form with only the triggering message pre-filled into Current Behaviour. The `channels:history` scope (and `groups:history` for private channels) must be present in the app manifest for the thread read to work — adding these scopes requires **reinstalling** the app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)).
+
 **Usage**
 
 - `/ticket` — opens a form to file a new ticket directly from Slack.
-- "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket.
+- "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket. With `GEMINI_API_KEY` set, the entire thread is read and the form fields are drafted automatically.
 
 Tickets created from either flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
 
