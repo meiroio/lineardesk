@@ -57,7 +57,9 @@ describe("parseTicketSubmission", () => {
             expectedBehaviour: { expectedBehaviour_input: { value: "E" } },
             currentBehaviour: { currentBehaviour_input: { value: "C" } },
             stepsToReproduce: { stepsToReproduce_input: { value: "S" } },
-            severity: { severity_input: { selected_option: { value: "high" } } },
+            severity: {
+              severity_input: { selected_option: { value: "high" } },
+            },
           },
         },
       },
