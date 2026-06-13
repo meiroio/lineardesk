@@ -104,6 +104,17 @@ function makeSlack(): SlackGateway {
   }
 }
 
+function makeGemini() {
+  return {
+    extractTicketDraft: vi.fn(async () => ({
+      title: "CSV export 500s",
+      expectedBehaviour: "works",
+      currentBehaviour: "500",
+      stepsToReproduce: "click export",
+    })),
+  }
+}
+
 describe("slack routes", () => {
   it("does not mount slack routes when slack is unconfigured", async () => {
     const app = createApiApp({
@@ -232,6 +243,86 @@ describe("slack routes", () => {
       (b: { block_id: string }) => b.block_id === "currentBehaviour"
     )
     expect(descBlock.element.initial_value).toContain("screen is blank")
+  })
+
+  it("opens a loading view then updates with the AI draft", async () => {
+    const slack = makeSlack()
+    const gemini = makeGemini()
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s" }],
+    }))
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-2.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack,
+      gemini,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "message_action",
+      trigger_id: "T2",
+      channel: { id: "C1" },
+      user: { id: "U1" },
+      message: { ts: "1.1", text: "export 500s" },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    await vi.waitFor(() => {
+      expect(gemini.extractTicketDraft).toHaveBeenCalled()
+      expect(slack.updateView).toHaveBeenCalledWith(
+        "V1",
+        expect.objectContaining({ callback_id: "slack_ticket_submit" })
+      )
+    })
+  })
+
+  it("opens the form directly when gemini is unconfigured", async () => {
+    const slack = makeSlack()
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const payloadObj = {
+      type: "message_action",
+      trigger_id: "T3",
+      channel: { id: "C1" },
+      user: { id: "U1" },
+      message: { ts: "1.1", text: "hi" },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    expect(slack.openView).toHaveBeenCalledWith(
+      "T3",
+      expect.objectContaining({ callback_id: "slack_ticket_submit" })
+    )
+    expect(slack.updateView).not.toHaveBeenCalled()
   })
 
   it("view_submission happy path creates a ticket and confirms in-thread", async () => {

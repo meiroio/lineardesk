@@ -16,8 +16,13 @@ import {
   parseCreateRequestInput,
   RequestValidationError,
 } from "./request-validation"
+import { buildTranscript, createGeminiGateway } from "./ai/gemini"
 import { createSlackGateway } from "./slack/gateway"
-import { buildTicketModal, parseTicketSubmission } from "./slack/modal"
+import {
+  buildLoadingModal,
+  buildTicketModal,
+  parseTicketSubmission,
+} from "./slack/modal"
 import { verifySlackSignature } from "./slack/signature"
 import { createSlackTicket, SlackEmailMissingError } from "./slack/ticket"
 import type {
@@ -25,6 +30,7 @@ import type {
   AuthBridge,
   AuthSession,
   CloseIssueResolution,
+  GeminiGateway,
   HelpdeskRepository,
   LinearGateway,
   LinearIssueCommentSnapshot,
@@ -47,6 +53,7 @@ export type ApiDependencies = {
   linear: LinearGateway
   auth: AuthBridge
   slack?: SlackGateway
+  gemini?: GeminiGateway
   verifyWebhook?: VerifyWebhook
 }
 
@@ -403,18 +410,60 @@ export function createApiApp(dependencies?: ApiDependencies) {
               })
             )
           : []
-        await deps.slack.openView(
+        const meta = {
+          channel: payload.channel.id as string,
+          messageTs: payload.message.ts as string,
+          threadTs: (payload.message.thread_ts ?? payload.message.ts) as string,
+          files,
+        }
+        const messageText = (payload.message.text as string | undefined) ?? ""
+
+        if (!deps.gemini) {
+          await deps.slack.openView(
+            payload.trigger_id,
+            buildTicketModal({
+              prefill: { currentBehaviour: messageText },
+              privateMetadata: meta,
+            })
+          )
+          return new Response("", { status: 200 })
+        }
+
+        const slack = deps.slack
+        const gemini = deps.gemini
+        const viewId = await slack.openView(
           payload.trigger_id,
-          buildTicketModal({
-            prefill: { currentBehaviour: payload.message?.text ?? "" },
-            privateMetadata: {
-              channel: payload.channel?.id,
-              messageTs: payload.message?.ts,
-              threadTs: payload.message?.thread_ts ?? payload.message?.ts,
-              files,
-            },
-          })
+          buildLoadingModal()
         )
+        const work = (async () => {
+          try {
+            const { messages } = await slack.getThreadReplies({
+              channel: meta.channel,
+              threadTs: meta.threadTs,
+            })
+            const draft = await gemini.extractTicketDraft(
+              buildTranscript(messages)
+            )
+            await slack.updateView(
+              viewId,
+              buildTicketModal({ prefill: draft, privateMetadata: meta })
+            )
+          } catch (error) {
+            console.error("slack ai prefill failed", error)
+            await slack
+              .updateView(
+                viewId,
+                buildTicketModal({
+                  prefill: { currentBehaviour: messageText },
+                  privateMetadata: meta,
+                })
+              )
+              .catch((updateError) => {
+                console.error("slack loading view update failed", updateError)
+              })
+          }
+        })()
+        scheduleBackground(request, work)
         return new Response("", { status: 200 })
       }
 
@@ -509,6 +558,7 @@ function createDefaultDependencies(): ResolvedApiDependencies {
     linear: createLinearGateway(config.linear),
     auth: createAuthBridge(config),
     slack: config.slack ? createSlackGateway(config.slack.botToken) : undefined,
+    gemini: config.gemini ? createGeminiGateway(config.gemini) : undefined,
     verifyWebhook: ({ rawBody, signature, timestamp }) => {
       if (!signature) throw new Error("Missing Linear webhook signature")
 
