@@ -76,7 +76,7 @@ describe("readAppConfig gemini", () => {
   it("includes gemini with a default model when the key is present", () => {
     expect(readAppConfig({ ...base, GEMINI_API_KEY: "g-key" }).gemini).toEqual({
       apiKey: "g-key",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
     })
   })
 

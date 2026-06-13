@@ -254,7 +254,7 @@ describe("slack routes", () => {
     const cfg = {
       ...config,
       slack: { signingSecret: "sign", botToken: "xoxb" },
-      gemini: { apiKey: "g", model: "gemini-2.5-flash" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
     }
     const app = createApiApp({
       config: cfg,
@@ -301,7 +301,7 @@ describe("slack routes", () => {
     const cfg = {
       ...config,
       slack: { signingSecret: "sign", botToken: "xoxb" },
-      gemini: { apiKey: "g", model: "gemini-2.5-flash" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
     }
     const app = createApiApp({
       config: cfg,

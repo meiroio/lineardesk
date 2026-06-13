@@ -49,7 +49,7 @@ export function readAppConfig(env: Env = process.env): AppConfig {
   const gemini = geminiApiKey
     ? {
         apiKey: geminiApiKey,
-        model: env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
+        model: env.GEMINI_MODEL?.trim() || "gemini-3.5-flash",
       }
     : undefined
 

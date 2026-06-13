@@ -77,7 +77,7 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
    - `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` — optional; omit to disable Slack intake
    - `GEMINI_API_KEY` — optional; enables AI pre-fill of the Slack ticket modal from the thread
-   - `GEMINI_MODEL` — optional override; defaults to `gemini-2.5-flash`
+   - `GEMINI_MODEL` — optional override; defaults to `gemini-3.5-flash`
 
 4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
 
