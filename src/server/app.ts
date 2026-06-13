@@ -471,17 +471,22 @@ export function createApiApp(dependencies?: ApiDependencies) {
               text: `:white_check_mark: Created *${result.issue.identifier}* — ${result.issue.url}${note}`,
             })
           } catch (error) {
+            console.error("slack ticket creation failed", error)
+            const reason =
+              error instanceof Error ? error.message : "unknown error"
             const text =
               error instanceof SlackEmailMissingError
                 ? ":warning: Your Slack account has no email, so I couldn't create a ticket."
-                : ":x: Sorry — creating the ticket failed. Please try again."
-            await slack.postMessage({
-              channel: parsed.meta.channel,
-              threadTs: parsed.meta.threadTs || undefined,
-              text,
-            }).catch((postError) => {
-              console.error("slack fallback postMessage failed", postError)
-            })
+                : `:x: Sorry — creating the ticket failed: ${reason}`
+            await slack
+              .postMessage({
+                channel: parsed.meta.channel,
+                threadTs: parsed.meta.threadTs || undefined,
+                text,
+              })
+              .catch((postError) => {
+                console.error("slack fallback postMessage failed", postError)
+              })
           }
         })()
 
