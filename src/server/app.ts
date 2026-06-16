@@ -12,12 +12,14 @@ import {
 import { reconcileOpenRequests } from "./reconcile"
 import { createHelpdeskRepository } from "./repository"
 import {
+  mergeBugReportSections,
   parseCreateCommentInput,
   parseCreateRequestInput,
   parseUpdateRequestInput,
   RequestValidationError,
 } from "./request-validation"
 import { buildTranscript, createGeminiGateway } from "./ai/gemini"
+import { extractMention, isUrlVerification } from "./slack/events"
 import { createSlackGateway } from "./slack/gateway"
 import {
   buildLoadingModal,
@@ -272,7 +274,11 @@ export function createApiApp(dependencies?: ApiDependencies) {
       } catch (error) {
         if (error instanceof RequestValidationError) {
           return json(
-            { error: "validation_error", issues: error.issues, fields: error.fields },
+            {
+              error: "validation_error",
+              issues: error.issues,
+              fields: error.fields,
+            },
             400
           )
         }
@@ -284,7 +290,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         session.user.email
       )
       if (!record) return json({ error: "not_found" }, 404)
-      if (["completed", "canceled", "duplicate"].includes(record.linearStateType)) {
+      if (
+        ["completed", "canceled", "duplicate"].includes(record.linearStateType)
+      ) {
         return json({ error: "ticket_closed" }, 409)
       }
 
@@ -586,6 +594,106 @@ export function createApiApp(dependencies?: ApiDependencies) {
         return new Response("", { status: 200 })
       }
 
+      return new Response("", { status: 200 })
+    })
+    .post("/slack/events", async ({ request }) => {
+      const deps = getDependencies()
+      if (!deps.slack || !deps.config.slack)
+        return json({ error: "not_found" }, 404)
+      const raw = await request.text()
+      if (
+        !verifySlackSignature({
+          signingSecret: deps.config.slack.signingSecret,
+          signature: request.headers.get("x-slack-signature"),
+          timestamp: request.headers.get("x-slack-request-timestamp"),
+          rawBody: raw,
+          nowMs: Date.now(),
+        })
+      )
+        return json({ error: "bad_signature" }, 401)
+
+      const payload = JSON.parse(raw)
+      if (isUrlVerification(payload))
+        return json({ challenge: payload.challenge })
+
+      const mention = extractMention(payload)
+      if (!mention) return new Response("", { status: 200 })
+      if (await deps.repo.hasProcessedSlackEvent(mention.eventId))
+        return new Response("", { status: 200 })
+      await deps.repo.recordSlackEvent(mention.eventId)
+
+      const slack = deps.slack
+      const gemini = deps.gemini
+      const baseUrl = deps.config.betterAuthUrl
+      const work = (async () => {
+        try {
+          if (!gemini) {
+            await slack.postMessage({
+              channel: mention.channel,
+              threadTs: mention.threadTs,
+              text: ':information_source: AI drafting isn’t enabled — use `/ticket` or the ⋯ "Create LinearDesk ticket" shortcut.',
+            })
+            return
+          }
+          const { messages } = await slack.getThreadReplies({
+            channel: mention.channel,
+            threadTs: mention.threadTs,
+          })
+          const draft = await gemini.extractTicketDraft(
+            buildTranscript(messages)
+          )
+          const description = mergeBugReportSections({
+            expectedBehaviour: draft.expectedBehaviour,
+            currentBehaviour: draft.currentBehaviour,
+            stepsToReproduce: draft.stepsToReproduce,
+          })
+          const images = messages
+            .flatMap((m) => m.files)
+            .filter((f) => f.mimetype.startsWith("image/"))
+          const result = await createSlackTicket(
+            {
+              config: deps.config,
+              repo: deps.repo,
+              linear: deps.linear,
+              slack,
+            },
+            {
+              slackUserId: mention.user,
+              title: draft.title.trim() || "Bug reported via Slack",
+              description,
+              severity: 3,
+              channel: mention.channel,
+              threadTs: mention.threadTs,
+              files: images,
+            }
+          )
+          const note =
+            result.droppedImages > 0
+              ? ` (couldn't attach ${result.droppedImages} image(s))`
+              : ""
+          await slack.postMessage({
+            channel: mention.channel,
+            threadTs: mention.threadTs,
+            text: `:white_check_mark: Created *${result.issue.identifier}* from this thread${note}. Need to fix the details? ${baseUrl}/requests/${result.record.id}`,
+          })
+        } catch (error) {
+          console.error("slack mention auto-create failed", error)
+          const text =
+            error instanceof SlackEmailMissingError
+              ? ":warning: Your Slack account has no email, so I couldn't create a ticket."
+              : `:x: Sorry — couldn't create a ticket from this thread: ${error instanceof Error ? error.message : "unknown error"}`
+          await slack
+            .postMessage({
+              channel: mention.channel,
+              threadTs: mention.threadTs,
+              text,
+            })
+            .catch((e) =>
+              console.error("slack mention fallback postMessage failed", e)
+            )
+        }
+      })()
+      scheduleBackground(request, work)
       return new Response("", { status: 200 })
     })
     .mount(authHandler)
