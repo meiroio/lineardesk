@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   parseCreateCommentInput,
   parseCreateRequestInput,
+  parseUpdateRequestInput,
   RequestValidationError,
 } from "../request-validation"
 
@@ -64,6 +65,35 @@ describe("parseCreateRequestInput", () => {
       expect(Object.keys(fields)).toContain("title")
       expect(Object.keys(fields)).toContain("expectedBehaviour")
       expect(fields.currentBehaviour).toBeUndefined()
+    }
+  })
+})
+
+describe("parseUpdateRequestInput", () => {
+  it("returns title, description (verbatim), severity", () => {
+    expect(
+      parseUpdateRequestInput({
+        title: "Login broken",
+        description: "Expected\n\nCurrent\n\nSteps",
+        severity: "high",
+      })
+    ).toEqual({
+      title: "Login broken",
+      description: "Expected\n\nCurrent\n\nSteps",
+      severity: 2,
+    })
+  })
+
+  it("flags bad fields with a per-field map", () => {
+    try {
+      parseUpdateRequestInput({ title: "x", description: "", severity: "" })
+      throw new Error("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(RequestValidationError)
+      const fields = (error as RequestValidationError).fields
+      expect(Object.keys(fields).sort()).toEqual(
+        ["description", "severity", "title"].sort()
+      )
     }
   })
 })
