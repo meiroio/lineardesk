@@ -87,6 +87,12 @@ export type LinearGateway = {
   listIssueStates: (issueIds: string[]) => Promise<IssueStateSnapshot[]>
   uploadAsset: (input: UploadAssetInput) => Promise<UploadAssetResult>
   closeIssue: (input: CloseIssueInput) => Promise<LinearIssueStateSnapshot>
+  updateIssueFields: (input: {
+    issueId: string
+    title: string
+    description: string
+    priority: number
+  }) => Promise<void>
 }
 
 export type CreateIssueCommentInput = {
@@ -194,6 +200,12 @@ export type HelpdeskRepository = {
   updateRequestFromLinear: (
     snapshot: LinearIssueWebhookSnapshot
   ) => Promise<void>
+  updateRequestFields: (input: {
+    id: string
+    title: string
+    description: string
+    severity: number
+  }) => Promise<RequestRecord | null>
 }
 
 export type VerifyWebhook = (input: {
