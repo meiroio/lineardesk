@@ -106,8 +106,23 @@ With `GEMINI_API_KEY` set, the "Create LinearDesk ticket" message shortcut reads
 
 - `/ticket` — opens a form to file a new ticket directly from Slack.
 - "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket. With `GEMINI_API_KEY` set, the entire thread is read and the form fields are drafted automatically.
+- **`@LinearDesk` mention in a thread** — mentioning the bot in any thread immediately creates an AI-drafted ticket and replies in-thread with a link to the portal edit page. Gemini reads the full thread, including any images, and drafts the ticket; the images are also attached to the Linear issue. If `GEMINI_API_KEY` is not set, the bot replies with a hint to use `/ticket` or the ⋯ "Create LinearDesk ticket" shortcut instead — it cannot auto-draft without Gemini. This requires the `app_mentions:read` scope and Event Subscriptions enabled in the Slack app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)); adding the scope requires **reinstalling** the app.
 
-Tickets created from either flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
+Tickets created from any flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
+
+**Portal ticket editing**
+
+The ticket detail page has an **Edit** button visible to the ticket owner while the ticket is in a non-terminal state. It lets the owner change the Title, Description, and Severity; the update is applied to both the Linear issue and the portal database.
+
+**Phase 2 deploy step — migrate before deploying**
+
+Phase 2 adds a `slack_events` deduplication table. Apply the migration to prod **before** deploying this change:
+
+```bash
+bun run db:migrate:prod
+```
+
+Deploying without this migration will cause every `@mention` event to 500 until the table exists.
 
 **Planned follow-up (Plan B)**
 
