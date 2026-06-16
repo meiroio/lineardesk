@@ -145,7 +145,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       })
       .where(eq(helpdeskRequests.id, input.id))
       .returning()
-    const row = rows[0]
+    const row = rows[0] as HelpdeskRequestRow | undefined
     return row ? toRequestRecord(row) : null
   }
 
