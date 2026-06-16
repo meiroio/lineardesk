@@ -145,6 +145,13 @@ export const linearWebhookEvents = pgTable("linear_webhook_events", {
     .defaultNow(),
 })
 
+export const slackEvents = pgTable("slack_events", {
+  eventId: text("event_id").primaryKey(),
+  receivedAt: timestamp("received_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
 export const authUsersRelations = relations(authUsers, ({ many }) => ({
   sessions: many(authSessions),
   accounts: many(authAccounts),

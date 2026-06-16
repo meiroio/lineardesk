@@ -199,6 +199,8 @@ export type HelpdeskRepository = {
     linearIssueId: string | null,
     rawBodyHash: string
   ) => Promise<void>
+  hasProcessedSlackEvent: (eventId: string) => Promise<boolean>
+  recordSlackEvent: (eventId: string) => Promise<void>
   updateRequestFromLinear: (
     snapshot: LinearIssueWebhookSnapshot
   ) => Promise<void>

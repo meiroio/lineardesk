@@ -9,7 +9,12 @@ import type {
 } from "./types"
 import { getDb } from "./db/client"
 import type * as schema from "./db/schema"
-import { authUsers, helpdeskRequests, linearWebhookEvents } from "./db/schema"
+import {
+  authUsers,
+  helpdeskRequests,
+  linearWebhookEvents,
+  slackEvents,
+} from "./db/schema"
 
 type Database = NodePgDatabase<typeof schema>
 type HelpdeskRequestRow = typeof helpdeskRequests.$inferSelect
@@ -126,6 +131,22 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     await this.db
       .insert(linearWebhookEvents)
       .values({ eventKey, linearIssueId, rawBodyHash })
+      .onConflictDoNothing()
+  }
+
+  async hasProcessedSlackEvent(eventId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ eventId: slackEvents.eventId })
+      .from(slackEvents)
+      .where(eq(slackEvents.eventId, eventId))
+      .limit(1)
+    return rows.length > 0
+  }
+
+  async recordSlackEvent(eventId: string): Promise<void> {
+    await this.db
+      .insert(slackEvents)
+      .values({ eventId })
       .onConflictDoNothing()
   }
 
