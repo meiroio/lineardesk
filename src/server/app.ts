@@ -14,6 +14,7 @@ import { createHelpdeskRepository } from "./repository"
 import {
   parseCreateCommentInput,
   parseCreateRequestInput,
+  parseUpdateRequestInput,
   RequestValidationError,
 } from "./request-validation"
 import { buildTranscript, createGeminiGateway } from "./ai/gemini"
@@ -258,6 +259,47 @@ export function createApiApp(dependencies?: ApiDependencies) {
         params.id,
         session.user.email
       )
+      return { request: serializeRequest(updated ?? record) }
+    })
+    .post("/requests/:id/update", async ({ params, body, request }) => {
+      const deps = getDependencies()
+      const session = await requireAuthorizedSession(deps, request.headers)
+      if (session instanceof Response) return session
+
+      let input: ReturnType<typeof parseUpdateRequestInput>
+      try {
+        input = parseUpdateRequestInput(body)
+      } catch (error) {
+        if (error instanceof RequestValidationError) {
+          return json(
+            { error: "validation_error", issues: error.issues, fields: error.fields },
+            400
+          )
+        }
+        throw error
+      }
+
+      const record = await deps.repo.getRequestForEmail(
+        params.id,
+        session.user.email
+      )
+      if (!record) return json({ error: "not_found" }, 404)
+      if (["completed", "canceled", "duplicate"].includes(record.linearStateType)) {
+        return json({ error: "ticket_closed" }, 409)
+      }
+
+      await deps.linear.updateIssueFields({
+        issueId: record.linearIssueId,
+        title: input.title,
+        description: input.description,
+        priority: input.severity,
+      })
+      const updated = await deps.repo.updateRequestFields({
+        id: record.id,
+        title: input.title,
+        description: input.description,
+        severity: input.severity,
+      })
       return { request: serializeRequest(updated ?? record) }
     })
     .post("/uploads", async ({ request }) => {
