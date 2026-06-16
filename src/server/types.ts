@@ -130,7 +130,9 @@ export type SlackGateway = {
   getThreadReplies: (input: {
     channel: string
     threadTs: string
-  }) => Promise<{ messages: { user: string | null; text: string }[] }>
+  }) => Promise<{
+    messages: { user: string | null; text: string; files: SlackFileRef[] }[]
+  }>
   downloadFile: (
     urlPrivate: string
   ) => Promise<{ bytes: Uint8Array; contentType: string }>

@@ -249,7 +249,7 @@ describe("slack routes", () => {
     const slack = makeSlack()
     const gemini = makeGemini()
     slack.getThreadReplies = vi.fn(async () => ({
-      messages: [{ user: "U1", text: "export 500s" }],
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
     }))
     const cfg = {
       ...config,
@@ -296,7 +296,7 @@ describe("slack routes", () => {
       throw new Error("gemini down")
     })
     slack.getThreadReplies = vi.fn(async () => ({
-      messages: [{ user: "U1", text: "export 500s" }],
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
     }))
     const cfg = {
       ...config,
