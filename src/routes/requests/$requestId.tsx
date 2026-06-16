@@ -295,7 +295,7 @@ function RequestDetail() {
                       id="edit-description"
                       required
                       minLength={1}
-                      maxLength={5000}
+                      maxLength={8000}
                       rows={6}
                       value={editDescription}
                       onChange={(event) =>
