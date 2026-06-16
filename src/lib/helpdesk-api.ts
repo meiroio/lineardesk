@@ -84,6 +84,16 @@ export async function closeRequest(
   })
 }
 
+export async function updateRequest(
+  id: string,
+  input: { title: string; description: string; severity: string }
+): Promise<{ request: PortalRequest }> {
+  return apiPost<{ request: PortalRequest }>(
+    `/api/requests/${id}/update`,
+    input
+  )
+}
+
 export const requestKeys = {
   list: ["requests"] as const,
   detail: (id: string) => ["request", id] as const,

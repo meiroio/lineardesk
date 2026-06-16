@@ -44,7 +44,10 @@ function makeRepo(open: RequestRecord[]): HelpdeskRepository {
     listOpenRequests: vi.fn(async () => open),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
+    hasProcessedSlackEvent: vi.fn(async () => false),
+    recordSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
+    updateRequestFields: vi.fn(async () => makeRecord()),
   }
 }
 
@@ -56,6 +59,7 @@ function makeLinear(states: IssueStateSnapshot[]): LinearGateway {
     listIssueStates: vi.fn(async () => states),
     uploadAsset: vi.fn(),
     closeIssue: vi.fn(),
+    updateIssueFields: vi.fn(),
   }
 }
 

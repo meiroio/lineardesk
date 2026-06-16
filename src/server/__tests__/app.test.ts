@@ -71,7 +71,22 @@ function makeRepo(): HelpdeskRepository {
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
+    hasProcessedSlackEvent: vi.fn(async () => false),
+    recordSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
+    updateRequestFields: vi.fn(async () => makeRecord()),
+  }
+}
+
+function makeLinear(): LinearGateway {
+  return {
+    createHelpdeskIssue: vi.fn(),
+    createIssueComment: vi.fn(),
+    listIssueComments: vi.fn(async () => []),
+    listIssueStates: vi.fn(async () => []),
+    uploadAsset: vi.fn(),
+    closeIssue: vi.fn(),
+    updateIssueFields: vi.fn(),
   }
 }
 
@@ -83,14 +98,7 @@ describe("createApiApp", () => {
     const app = createApiApp({
       config,
       repo: makeRepo(),
-      linear: {
-        createHelpdeskIssue: vi.fn(),
-        closeIssue: vi.fn(),
-        createIssueComment: vi.fn(),
-        listIssueComments: vi.fn(async () => []),
-        uploadAsset: vi.fn(),
-        listIssueStates: vi.fn(async () => []),
-      },
+      linear: makeLinear(),
       auth: {
         handler: authHandler,
         getSession: vi.fn(async () => null),
@@ -111,6 +119,7 @@ describe("createApiApp", () => {
   it("creates a Linear issue and stores a helpdesk request", async () => {
     const repo = makeRepo()
     const linear = {
+      ...makeLinear(),
       createHelpdeskIssue: vi.fn(async () => ({
         id: "linear-issue-id",
         identifier: "BAS-123",
@@ -122,11 +131,6 @@ describe("createApiApp", () => {
           type: "triage",
         },
       })),
-      closeIssue: vi.fn(),
-      createIssueComment: vi.fn(),
-      listIssueComments: vi.fn(async () => []),
-      uploadAsset: vi.fn(),
-      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -172,14 +176,7 @@ describe("createApiApp", () => {
     const app = createApiApp({
       config,
       repo: makeRepo(),
-      linear: {
-        createHelpdeskIssue: vi.fn(),
-        closeIssue: vi.fn(),
-        createIssueComment: vi.fn(),
-        listIssueComments: vi.fn(async () => []),
-        uploadAsset: vi.fn(),
-        listIssueStates: vi.fn(async () => []),
-      },
+      linear: makeLinear(),
       auth: {
         getSession: vi.fn(async () => ({
           user: { ...session.user, email: "person@evil.test" },
@@ -200,14 +197,7 @@ describe("createApiApp", () => {
     const app = createApiApp({
       config,
       repo,
-      linear: {
-        createHelpdeskIssue: vi.fn(),
-        closeIssue: vi.fn(),
-        createIssueComment: vi.fn(),
-        listIssueComments: vi.fn(async () => []),
-        uploadAsset: vi.fn(),
-        listIssueStates: vi.fn(async () => []),
-      },
+      linear: makeLinear(),
       auth: { getSession: vi.fn(async () => session) },
       verifyWebhook: vi.fn(async () => ({
         type: "Issue",
@@ -236,9 +226,7 @@ describe("createApiApp", () => {
   it("returns Linear comments with a request detail", async () => {
     const repo = makeRepo()
     const linear = {
-      createHelpdeskIssue: vi.fn(),
-      closeIssue: vi.fn(),
-      createIssueComment: vi.fn(),
+      ...makeLinear(),
       listIssueComments: vi.fn(async () => [
         {
           id: "activity-comment",
@@ -247,8 +235,6 @@ describe("createApiApp", () => {
           createdAt: new Date("2026-01-01T00:30:00.000Z"),
         },
       ]),
-      uploadAsset: vi.fn(),
-      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -281,17 +267,13 @@ describe("createApiApp", () => {
   it("creates requester replies as Linear comments", async () => {
     const repo = makeRepo()
     const linear = {
-      createHelpdeskIssue: vi.fn(),
-      closeIssue: vi.fn(),
+      ...makeLinear(),
       createIssueComment: vi.fn(async () => ({
         id: "reply-id",
         body: "Requester: person@example.com\n\nIs it still broken?",
         authorName: "Desk",
         createdAt: new Date("2026-01-01T00:45:00.000Z"),
       })),
-      listIssueComments: vi.fn(async () => []),
-      uploadAsset: vi.fn(),
-      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -326,8 +308,7 @@ describe("createApiApp", () => {
   it("hides the details comment from the activity timeline", async () => {
     const repo = makeRepo()
     const linear = {
-      createHelpdeskIssue: vi.fn(),
-      createIssueComment: vi.fn(),
+      ...makeLinear(),
       listIssueComments: vi.fn(async () => [
         {
           id: "comment-id",
@@ -342,9 +323,6 @@ describe("createApiApp", () => {
           createdAt: new Date("2026-01-01T00:30:00.000Z"),
         },
       ]),
-      uploadAsset: vi.fn(),
-      listIssueStates: vi.fn(async () => []),
-      closeIssue: vi.fn(),
     }
     const app = createApiApp({
       config,
@@ -368,11 +346,7 @@ describe("createApiApp", () => {
   it("closes the request with the chosen resolution", async () => {
     const repo = makeRepo()
     const linear = {
-      createHelpdeskIssue: vi.fn(),
-      createIssueComment: vi.fn(),
-      listIssueComments: vi.fn(async () => []),
-      uploadAsset: vi.fn(),
-      listIssueStates: vi.fn(async () => []),
+      ...makeLinear(),
       closeIssue: vi.fn(async () => ({
         id: "canceled-state",
         name: "Canceled",
@@ -406,14 +380,7 @@ describe("createApiApp", () => {
     const app = createApiApp({
       config,
       repo: makeRepo(),
-      linear: {
-        createHelpdeskIssue: vi.fn(),
-        createIssueComment: vi.fn(),
-        listIssueComments: vi.fn(async () => []),
-        uploadAsset: vi.fn(),
-        listIssueStates: vi.fn(async () => []),
-        closeIssue: vi.fn(),
-      },
+      linear: makeLinear(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -427,6 +394,58 @@ describe("createApiApp", () => {
 
     expect(response.status).toBe(400)
   })
+
+  it("updates a request's fields for its owner", async () => {
+    const repo = makeRepo()
+    const linear = makeLinear()
+    const app = createApiApp({
+      config,
+      repo,
+      linear,
+      auth: { getSession: vi.fn(async () => session) },
+    })
+    const res = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Edited title",
+          description: "Expected\n\nCurrent\n\nSteps",
+          severity: "urgent",
+        }),
+      })
+    )
+    expect(res.status).toBe(200)
+    expect(linear.updateIssueFields).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Edited title", priority: 1 })
+    )
+    expect(repo.updateRequestFields).toHaveBeenCalled()
+  })
+
+  it("rejects editing a closed ticket with 409", async () => {
+    const repo = makeRepo()
+    repo.getRequestForEmail = vi.fn(async () =>
+      makeRecord({ linearStateType: "completed" })
+    )
+    const app = createApiApp({
+      config,
+      repo,
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+    const res = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "x".repeat(5),
+          description: "d",
+          severity: "low",
+        }),
+      })
+    )
+    expect(res.status).toBe(409)
+  })
 })
 
 describe("POST /api/uploads", () => {
@@ -435,14 +454,10 @@ describe("POST /api/uploads", () => {
     getSession?: AuthBridge["getSession"]
   }) {
     const linear = {
-      createHelpdeskIssue: vi.fn(),
-      closeIssue: vi.fn(),
-      createIssueComment: vi.fn(),
-      listIssueComments: vi.fn(async () => []),
+      ...makeLinear(),
       uploadAsset:
         overrides?.uploadAsset ??
         vi.fn(async () => ({ assetUrl: "https://uploads.linear.app/abc.png" })),
-      listIssueStates: vi.fn(async () => []),
     }
     const app = createApiApp({
       config,
@@ -516,17 +531,6 @@ describe("POST /api/uploads", () => {
 })
 
 describe("GET /api/cron/reconcile", () => {
-  function makeLinear(): LinearGateway {
-    return {
-      createHelpdeskIssue: vi.fn(),
-      createIssueComment: vi.fn(),
-      listIssueComments: vi.fn(async () => []),
-      listIssueStates: vi.fn(async () => []),
-      uploadAsset: vi.fn(),
-      closeIssue: vi.fn(),
-    }
-  }
-
   afterEach(() => {
     vi.unstubAllEnvs()
   })

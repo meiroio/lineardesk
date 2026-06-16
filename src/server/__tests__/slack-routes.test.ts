@@ -64,7 +64,10 @@ function makeRepo(): HelpdeskRepository {
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
+    hasProcessedSlackEvent: vi.fn(async () => false),
+    recordSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
+    updateRequestFields: vi.fn(async () => makeRecord()),
   }
 }
 
@@ -76,6 +79,7 @@ function makeLinear(): LinearGateway {
     listIssueComments: vi.fn(async () => []),
     uploadAsset: vi.fn(),
     listIssueStates: vi.fn(async () => []),
+    updateIssueFields: vi.fn(),
   }
 }
 
@@ -113,6 +117,10 @@ function makeGemini() {
       stepsToReproduce: "click export",
     })),
   }
+}
+
+function eventsBody(payloadObj: unknown) {
+  return JSON.stringify(payloadObj)
 }
 
 describe("slack routes", () => {
@@ -249,7 +257,7 @@ describe("slack routes", () => {
     const slack = makeSlack()
     const gemini = makeGemini()
     slack.getThreadReplies = vi.fn(async () => ({
-      messages: [{ user: "U1", text: "export 500s" }],
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
     }))
     const cfg = {
       ...config,
@@ -296,7 +304,7 @@ describe("slack routes", () => {
       throw new Error("gemini down")
     })
     slack.getThreadReplies = vi.fn(async () => ({
-      messages: [{ user: "U1", text: "export 500s" }],
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
     }))
     const cfg = {
       ...config,
@@ -524,5 +532,113 @@ describe("slack routes", () => {
       errors: expect.any(Object),
     })
     expect(body.errors.expectedBehaviour).toBeDefined()
+  })
+
+  it("echoes the url_verification challenge", async () => {
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      slack: makeSlack(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({ type: "url_verification", challenge: "abc" })
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ challenge: "abc" })
+  })
+
+  it("auto-creates a ticket on app_mention and confirms with a portal link", async () => {
+    const slack = makeSlack()
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
+    }))
+    const gemini = makeGemini()
+    const repo = makeRepo()
+    const linear = makeLinear()
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {
+        id: "i",
+        identifier: "BAS-123",
+        url: "https://l/BAS-123",
+        detailsCommentId: null,
+        state: { id: "s", name: "Triage", type: "triage" },
+      }
+    )
+    const cfg = {
+      ...config,
+      betterAuthUrl: "https://portal.example",
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear,
+      slack,
+      gemini,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({
+      event_id: "Ev1",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    await vi.waitFor(() => {
+      expect(repo.createRequest).toHaveBeenCalled()
+      expect(slack.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("https://portal.example/requests/"),
+        })
+      )
+    })
+  })
+
+  it("ignores a duplicate event_id", async () => {
+    const slack = makeSlack()
+    const repo = makeRepo()
+    repo.hasProcessedSlackEvent = vi.fn(async () => true)
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "m" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear: makeLinear(),
+      slack,
+      gemini: makeGemini(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({
+      event_id: "Ev1",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(repo.createRequest).not.toHaveBeenCalled()
   })
 })

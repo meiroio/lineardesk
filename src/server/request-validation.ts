@@ -112,6 +112,30 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
   }
 }
 
+export function parseUpdateRequestInput(input: unknown): CreateRequestInput {
+  const value = input && typeof input === "object" ? input : {}
+  const read = (k: string) => {
+    const raw = (value as Record<string, unknown>)[k]
+    return typeof raw === "string" ? raw.trim() : ""
+  }
+
+  const title = read("title")
+  const description = read("description")
+  const severity = SEVERITY_PRIORITY[read("severity").toLowerCase()]
+
+  const fields: Record<string, string> = {}
+  if (title.length < 3 || title.length > 160)
+    fields.title = "Title must be 3–160 characters"
+  if (description.length < 1 || description.length > 8000)
+    fields.description = "Description is required (max 8000 characters)"
+  if (!severity) fields.severity = "Pick a severity"
+
+  if (Object.keys(fields).length > 0)
+    throw new RequestValidationError(Object.values(fields), fields)
+
+  return { title, description, severity }
+}
+
 export function parseCreateCommentInput(input: unknown): CreateCommentInput {
   const issues: string[] = []
   const value = input && typeof input === "object" ? input : {}

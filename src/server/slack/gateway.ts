@@ -69,7 +69,16 @@ export function createSlackGateway(botToken: string): SlackGateway {
     },
     async getThreadReplies(input) {
       const data = await callGet<{
-        messages?: { user?: string; text?: string }[]
+        messages?: {
+          user?: string
+          text?: string
+          files?: {
+            id: string
+            name: string
+            mimetype: string
+            url_private: string
+          }[]
+        }[]
       }>("conversations.replies", {
         channel: input.channel,
         ts: input.threadTs,
@@ -79,6 +88,12 @@ export function createSlackGateway(botToken: string): SlackGateway {
         messages: (data.messages ?? []).map((m) => ({
           user: m.user ?? null,
           text: m.text ?? "",
+          files: (m.files ?? []).map((f) => ({
+            id: f.id,
+            name: f.name,
+            mimetype: f.mimetype,
+            urlPrivate: f.url_private,
+          })),
         })),
       }
     },
