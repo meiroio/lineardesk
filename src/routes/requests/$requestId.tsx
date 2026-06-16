@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -33,6 +34,7 @@ import {
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
+  updateRequest,
 } from "@/lib/helpdesk-api"
 import { requirePortalAuth } from "@/lib/route-guards"
 
@@ -51,6 +53,12 @@ function RequestDetail() {
   const [closing, setClosing] = useState(false)
   const [closeBusy, setCloseBusy] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [editBusy, setEditBusy] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editSeverity, setEditSeverity] = useState("medium")
 
   // The record (title, description, severity, dates, status) already arrived
   // with the list, so seed it as placeholder data: the page renders instantly
@@ -143,6 +151,47 @@ function RequestDetail() {
     }
   }
 
+  function startEditing() {
+    if (!request) return
+    setEditTitle(request.title)
+    setEditDescription(request.description)
+    setEditSeverity(severityLabelOf(request.severity))
+    setEditError(null)
+    setEditing(true)
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setEditBusy(true)
+    setEditError(null)
+
+    try {
+      const data = await updateRequest(requestId, {
+        title: editTitle,
+        description: editDescription,
+        severity: editSeverity,
+      })
+      queryClient.setQueryData<PortalRequest>(
+        requestKeys.detail(requestId),
+        (old) =>
+          old
+            ? { ...old, ...data.request, comments: old.comments }
+            : data.request
+      )
+      void queryClient.invalidateQueries({ queryKey: requestKeys.list })
+      setEditing(false)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        void navigate({ to: "/login" })
+        return
+      }
+
+      setEditError("Could not save changes. Try again after a moment.")
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
   if (isNotFound) {
     return (
       <PageShell
@@ -210,11 +259,86 @@ function RequestDetail() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex min-w-0 flex-col gap-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
               <CardTitle>Description</CardTitle>
+              {isOpen && !editing ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => startEditing()}
+                >
+                  Edit
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent>
-              <DescriptionBody text={request.description} />
+              {editing ? (
+                <form
+                  className="flex flex-col gap-5"
+                  onSubmit={handleEditSubmit}
+                >
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-title">Title</Label>
+                    <Input
+                      id="edit-title"
+                      required
+                      minLength={3}
+                      maxLength={160}
+                      value={editTitle}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-description">Description</Label>
+                    <Textarea
+                      id="edit-description"
+                      required
+                      minLength={1}
+                      maxLength={5000}
+                      rows={6}
+                      value={editDescription}
+                      onChange={(event) =>
+                        setEditDescription(event.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-severity">Severity</Label>
+                    <select
+                      id="edit-severity"
+                      value={editSeverity}
+                      onChange={(event) => setEditSeverity(event.target.value)}
+                      className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+
+                  {editError ? (
+                    <p className="text-sm text-destructive">{editError}</p>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setEditing(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={editBusy}>
+                      {editBusy ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <DescriptionBody text={request.description} />
+              )}
             </CardContent>
           </Card>
 
@@ -409,6 +533,16 @@ function initialsOf(name: string) {
     .join("")
 
   return initials || "?"
+}
+
+function severityLabelOf(priority: number | null) {
+  const labels: Record<number, string> = {
+    1: "urgent",
+    2: "high",
+    3: "medium",
+    4: "low",
+  }
+  return labels[priority ?? 3] ?? "medium"
 }
 
 function RequestDetailSkeleton() {
