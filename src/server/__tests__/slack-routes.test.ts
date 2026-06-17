@@ -603,12 +603,16 @@ describe("slack routes", () => {
     expect(res.status).toBe(200)
     await vi.waitFor(() => {
       expect(repo.createRequest).toHaveBeenCalled()
-      expect(slack.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining("https://portal.example/requests/"),
-        })
-      )
+      expect(slack.postMessage).toHaveBeenCalled()
     })
+    const confirmText = (slack.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls.at(-1)?.[0]?.text as string
+    // The confirmation echoes the AI draft (title + the bug-report
+    // description) so the requester can validate it inline without opening
+    // the portal, and still links to the portal edit page.
+    expect(confirmText).toContain("CSV export 500s")
+    expect(confirmText).toContain("Expected behaviour")
+    expect(confirmText).toContain("https://portal.example/requests/")
   })
 
   it("ignores a duplicate event_id", async () => {
