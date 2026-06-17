@@ -676,6 +676,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
             currentBehaviour: draft.currentBehaviour,
             stepsToReproduce: draft.stepsToReproduce,
           })
+          const title = draft.title.trim() || "Bug reported via Slack"
           const images = messages
             .flatMap((m) => m.files)
             .filter((f) => f.mimetype.startsWith("image/"))
@@ -688,7 +689,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
             },
             {
               slackUserId: mention.user,
-              title: draft.title.trim() || "Bug reported via Slack",
+              title,
               description,
               severity: 3,
               channel: mention.channel,
@@ -700,10 +701,19 @@ export function createApiApp(dependencies?: ApiDependencies) {
             result.droppedImages > 0
               ? ` (couldn't attach ${result.droppedImages} image(s))`
               : ""
+          // Echo the AI draft back into the thread so the requester can
+          // validate what was created at a glance, without opening the portal.
           await slack.postMessage({
             channel: mention.channel,
             threadTs: mention.threadTs,
-            text: `:white_check_mark: Created *${result.issue.identifier}* from this thread${note}. Need to fix the details? ${baseUrl}/requests/${result.record.id}`,
+            text: [
+              `:white_check_mark: Created *${result.issue.identifier}* from this thread${note} — here's the draft, give it a quick look:`,
+              "",
+              `*${title}*`,
+              description,
+              "",
+              `Not quite right? Edit it here: ${baseUrl}/requests/${result.record.id}`,
+            ].join("\n"),
           })
         } catch (error) {
           console.error("slack mention auto-create failed", error)
