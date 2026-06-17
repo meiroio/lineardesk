@@ -615,6 +615,53 @@ describe("slack routes", () => {
     expect(confirmText).toContain("https://portal.example/requests/")
   })
 
+  it("builds the portal link without a double slash when betterAuthUrl ends in /", async () => {
+    const slack = makeSlack()
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
+    }))
+    const repo = makeRepo()
+    const linear = makeLinear()
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "i",
+      identifier: "BAS-11",
+      url: "https://l/BAS-11",
+      detailsCommentId: null,
+      state: { id: "s", name: "Triage", type: "triage" },
+    })
+    const cfg = {
+      ...config,
+      betterAuthUrl: "https://portal.example/",
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear,
+      slack,
+      gemini: makeGemini(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({
+      event_id: "EvSlash",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    await vi.waitFor(() => expect(slack.postMessage).toHaveBeenCalled())
+    const text = (slack.postMessage as ReturnType<typeof vi.fn>).mock.calls.at(
+      -1
+    )?.[0]?.text as string
+    expect(text).toContain("https://portal.example/requests/")
+    expect(text).not.toContain("//requests")
+  })
+
   it("ignores a duplicate event_id", async () => {
     const slack = makeSlack()
     const repo = makeRepo()
