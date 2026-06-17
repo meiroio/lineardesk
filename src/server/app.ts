@@ -60,16 +60,45 @@ export type ApiDependencies = {
   verifyWebhook?: VerifyWebhook
 }
 
-function scheduleBackground(request: Request, work: Promise<unknown>) {
+type WaitUntil = (promise: Promise<unknown>) => void
+
+type VercelRequestContext = {
+  get?: () => { waitUntil?: WaitUntil } | undefined
+}
+
+// Resolve the runtime's waitUntil so post-ack background work keeps the
+// serverless function alive. Vercel's Node runtime does NOT expose it on the
+// Request — it lives on a request-context global backed by AsyncLocalStorage
+// (the same place @vercel/functions reads). Workers-style runtimes attach it
+// to the request/context object, so check that first.
+function getWaitUntil(request: Request): WaitUntil | undefined {
+  const onRequest = (request as { waitUntil?: WaitUntil }).waitUntil
+  if (typeof onRequest === "function") return onRequest.bind(request)
+
+  const store = (
+    globalThis as Record<symbol, VercelRequestContext | undefined>
+  )[Symbol.for("@vercel/request-context")]
+  const ctx = store?.get?.()
+  if (ctx && typeof ctx.waitUntil === "function") return ctx.waitUntil.bind(ctx)
+
+  return undefined
+}
+
+async function scheduleBackground(request: Request, work: Promise<unknown>) {
   const safe = work.catch((error) => {
     console.error("slack background work failed", error)
   })
-  // Edge/serverless runtimes (Vercel/Workers) expose waitUntil to keep the
-  // function alive for post-response work; fall back to fire-and-forget locally.
-  const ctx = (request as { waitUntil?: (p: Promise<unknown>) => void })
-    .waitUntil
-  if (typeof ctx === "function") ctx(safe)
-  else void safe
+  const waitUntil = getWaitUntil(request)
+  if (waitUntil) {
+    // Fast path: hand the promise to the runtime and return the ack now.
+    waitUntil(safe)
+    return
+  }
+  // No waitUntil available (local dev, or a runtime that doesn't surface it):
+  // AWAIT the work so it actually runs before the function suspends. On Vercel
+  // this may exceed Slack's 3s ack window, but the event_id dedup turns the
+  // ensuing retry into a no-op, so the work still completes exactly once.
+  await safe
 }
 
 type ResolvedApiDependencies = ApiDependencies & {
@@ -513,7 +542,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
               })
           }
         })()
-        scheduleBackground(request, work)
+        await scheduleBackground(request, work)
         return new Response("", { status: 200 })
       }
 
@@ -590,7 +619,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
           }
         })()
 
-        scheduleBackground(request, work)
+        await scheduleBackground(request, work)
         return new Response("", { status: 200 })
       }
 
@@ -693,7 +722,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
             )
         }
       })()
-      scheduleBackground(request, work)
+      await scheduleBackground(request, work)
       return new Response("", { status: 200 })
     })
     .mount(authHandler)
