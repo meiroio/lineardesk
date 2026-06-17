@@ -641,4 +641,117 @@ describe("slack routes", () => {
     )
     expect(repo.createRequest).not.toHaveBeenCalled()
   })
+
+  it("hands mention work to the runtime waitUntil when present (serverless)", async () => {
+    const scheduled: Promise<unknown>[] = []
+    const sym = Symbol.for("@vercel/request-context")
+    ;(globalThis as Record<symbol, unknown>)[sym] = {
+      get: () => ({ waitUntil: (p: Promise<unknown>) => scheduled.push(p) }),
+    }
+    try {
+      const slack = makeSlack()
+      slack.getThreadReplies = vi.fn(async () => ({
+        messages: [{ user: "U1", text: "export 500s", files: [] }],
+      }))
+      const repo = makeRepo()
+      const linear = makeLinear()
+      ;(
+        linear.createHelpdeskIssue as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        id: "i",
+        identifier: "BAS-9",
+        url: "https://l/BAS-9",
+        detailsCommentId: null,
+        state: { id: "s", name: "Triage", type: "triage" },
+      })
+      const cfg = {
+        ...config,
+        betterAuthUrl: "https://portal.example",
+        slack: { signingSecret: "sign", botToken: "xoxb" },
+        gemini: { apiKey: "g", model: "gemini-3.5-flash" },
+      }
+      const app = createApiApp({
+        config: cfg,
+        repo,
+        linear,
+        slack,
+        gemini: makeGemini(),
+        auth: { getSession: vi.fn(async () => null) },
+      })
+      const raw = eventsBody({
+        event_id: "EvWU",
+        event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+      })
+      const res = await app.fetch(
+        new Request("http://localhost/api/slack/events", {
+          method: "POST",
+          headers: slackHeaders("sign", raw),
+          body: raw,
+        })
+      )
+      expect(res.status).toBe(200)
+      // The post-ack work must be registered with the runtime's waitUntil so
+      // the serverless function stays alive to run it — not fire-and-forgotten.
+      expect(scheduled).toHaveLength(1)
+      await Promise.all(scheduled)
+      expect(repo.createRequest).toHaveBeenCalled()
+      expect(slack.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("https://portal.example/requests/"),
+        })
+      )
+    } finally {
+      ;(globalThis as Record<symbol, unknown>)[sym] = undefined
+    }
+  })
+
+  it("awaits mention work when no runtime waitUntil is available", async () => {
+    const slack = makeSlack()
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
+    }))
+    const repo = makeRepo()
+    const linear = makeLinear()
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "i",
+      identifier: "BAS-10",
+      url: "https://l/BAS-10",
+      detailsCommentId: null,
+      state: { id: "s", name: "Triage", type: "triage" },
+    })
+    const cfg = {
+      ...config,
+      betterAuthUrl: "https://portal.example",
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear,
+      slack,
+      gemini: makeGemini(),
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({
+      event_id: "EvAwait",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    expect(res.status).toBe(200)
+    // With no waitUntil the route must AWAIT the work, so the ticket already
+    // exists by the time the response resolves (no polling / vi.waitFor).
+    expect(repo.createRequest).toHaveBeenCalled()
+    expect(slack.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("https://portal.example/requests/"),
+      })
+    )
+  })
 })
