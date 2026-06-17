@@ -653,7 +653,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
 
       const slack = deps.slack
       const gemini = deps.gemini
-      const baseUrl = deps.config.betterAuthUrl
+      // Trim any trailing slash so the portal link doesn't end up with a
+      // double slash (BETTER_AUTH_URL is often configured as "https://host/").
+      const baseUrl = deps.config.betterAuthUrl.replace(/\/+$/, "")
       const work = (async () => {
         try {
           if (!gemini) {
