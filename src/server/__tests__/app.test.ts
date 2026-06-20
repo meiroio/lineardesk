@@ -11,7 +11,11 @@ import type {
 } from "../types"
 
 const config: AppConfig = {
-  allowedEmailDomains: ["example.com"],
+  email: {
+    provider: "log",
+    appName: "LinearDesk",
+    from: "LinearDesk <noreply@lineardesk.local>",
+  },
   databaseUrl: "postgres://lineardesk:lineardesk@localhost:5432/lineardesk",
   betterAuthSecret: "test-secret",
   betterAuthUrl: "http://localhost:3000",
@@ -69,8 +73,8 @@ function makeRepo(): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "user-id"),
-    listRequestsForEmail: vi.fn(async () => [makeRecord()]),
-    getRequestForEmail: vi.fn(async () => makeRecord()),
+    listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
+    getRequestForOrganization: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
@@ -93,6 +97,21 @@ function makeLinear(): LinearGateway {
   }
 }
 
+function makeOrgAccess() {
+  return {
+    findActiveOrganizationForEmail: vi.fn(async () => ({
+      organizationId: "org-1",
+      organizationName: "Example",
+      organizationSlug: "example",
+      domain: "example.com",
+    })),
+    ensureMember: vi.fn(async () => undefined),
+    listMembershipsForUser: vi.fn(async () => []),
+    hasMembership: vi.fn(async () => true),
+    setActiveOrganizationForSession: vi.fn(async () => undefined),
+  }
+}
+
 describe("createApiApp", () => {
   it("mounts the Better Auth handler under the Elysia API app", async () => {
     const authHandler = vi.fn(async (request: Request) => {
@@ -102,6 +121,7 @@ describe("createApiApp", () => {
       config,
       repo: makeRepo(),
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: {
         handler: authHandler,
         getSession: vi.fn(async () => null),
@@ -139,6 +159,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -175,23 +196,23 @@ describe("createApiApp", () => {
     expect(repo.createRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         requesterUserId: "user-id",
-        organizationId: null,
         requesterEmail: "person@example.com",
+        organizationId: "org-1",
         source: "web",
       })
     )
   })
 
-  it("rejects authenticated users outside the allow-listed domains", async () => {
+  it("rejects authenticated users outside any approved organization", async () => {
     const app = createApiApp({
       config,
       repo: makeRepo(),
       linear: makeLinear(),
-      auth: {
-        getSession: vi.fn(async () => ({
-          ...session,
-          user: { ...session.user, email: "person@evil.test" },
-        })),
+      auth: { getSession: vi.fn(async () => session) },
+      orgAccess: {
+        ...makeOrgAccess(),
+        findActiveOrganizationForEmail: vi.fn(async () => null),
+        hasMembership: vi.fn(async () => false),
       },
     })
 
@@ -200,6 +221,25 @@ describe("createApiApp", () => {
     )
 
     expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: "forbidden_org" })
+  })
+
+  it("lists requests for the resolved organization", async () => {
+    const repo = makeRepo()
+    const app = createApiApp({
+      config,
+      repo,
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => session) },
+      orgAccess: makeOrgAccess(),
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests")
+    )
+
+    expect(response.status).toBe(200)
+    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1")
   })
 
   it("does not process the same Linear webhook event twice", async () => {
@@ -209,6 +249,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
       verifyWebhook: vi.fn(async () => ({
         type: "Issue",
@@ -251,6 +292,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -290,6 +332,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -339,6 +382,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -368,6 +412,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -392,6 +437,7 @@ describe("createApiApp", () => {
       config,
       repo: makeRepo(),
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
 
@@ -413,6 +459,7 @@ describe("createApiApp", () => {
       config,
       repo,
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
     const res = await app.fetch(
@@ -435,13 +482,14 @@ describe("createApiApp", () => {
 
   it("rejects editing a closed ticket with 409", async () => {
     const repo = makeRepo()
-    repo.getRequestForEmail = vi.fn(async () =>
+    repo.getRequestForOrganization = vi.fn(async () =>
       makeRecord({ linearStateType: "completed" })
     )
     const app = createApiApp({
       config,
       repo,
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => session) },
     })
     const res = await app.fetch(
@@ -474,6 +522,7 @@ describe("POST /api/uploads", () => {
       config,
       repo: makeRepo(),
       linear,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: overrides?.getSession ?? vi.fn(async () => session) },
     })
     return { app, linear }
@@ -552,6 +601,7 @@ describe("GET /api/cron/reconcile", () => {
       config,
       repo: makeRepo(),
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
 
@@ -569,6 +619,7 @@ describe("GET /api/cron/reconcile", () => {
       config,
       repo,
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
 

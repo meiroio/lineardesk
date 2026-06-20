@@ -12,7 +12,11 @@ import type {
 } from "../types"
 
 const config: AppConfig = {
-  allowedEmailDomains: ["example.com"],
+  email: {
+    provider: "log",
+    appName: "LinearDesk",
+    from: "LinearDesk <noreply@lineardesk.local>",
+  },
   databaseUrl: "postgres://lineardesk:lineardesk@localhost:5432/lineardesk",
   betterAuthSecret: "test-secret",
   betterAuthUrl: "http://localhost:3000",
@@ -60,8 +64,8 @@ function makeRepo(): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "user-id"),
-    listRequestsForEmail: vi.fn(async () => [makeRecord()]),
-    getRequestForEmail: vi.fn(async () => makeRecord()),
+    listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
+    getRequestForOrganization: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
@@ -81,6 +85,21 @@ function makeLinear(): LinearGateway {
     uploadAsset: vi.fn(),
     listIssueStates: vi.fn(async () => []),
     updateIssueFields: vi.fn(),
+  }
+}
+
+function makeOrgAccess() {
+  return {
+    findActiveOrganizationForEmail: vi.fn(async () => ({
+      organizationId: "org-1",
+      organizationName: "Example",
+      organizationSlug: "example",
+      domain: "example.com",
+    })),
+    ensureMember: vi.fn(async () => undefined),
+    listMembershipsForUser: vi.fn(async () => []),
+    hasMembership: vi.fn(async () => true),
+    setActiveOrganizationForSession: vi.fn(async () => undefined),
   }
 }
 
@@ -130,6 +149,7 @@ describe("slack routes", () => {
       config,
       repo: makeRepo(),
       linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const res = await app.fetch(
@@ -152,6 +172,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const body = new URLSearchParams({
@@ -186,6 +207,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const res = await app.fetch(
@@ -214,6 +236,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -271,6 +294,7 @@ describe("slack routes", () => {
       linear: makeLinear(),
       slack,
       gemini,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -318,6 +342,7 @@ describe("slack routes", () => {
       linear: makeLinear(),
       slack,
       gemini,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -364,6 +389,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -411,6 +437,7 @@ describe("slack routes", () => {
       repo,
       linear,
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -487,6 +514,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const payloadObj = {
@@ -546,6 +574,7 @@ describe("slack routes", () => {
       repo: makeRepo(),
       linear: makeLinear(),
       slack: makeSlack(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const raw = eventsBody({ type: "url_verification", challenge: "abc" })
@@ -589,6 +618,7 @@ describe("slack routes", () => {
       linear,
       slack,
       gemini,
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const raw = eventsBody({
@@ -607,8 +637,9 @@ describe("slack routes", () => {
       expect(repo.createRequest).toHaveBeenCalled()
       expect(slack.postMessage).toHaveBeenCalled()
     })
-    const confirmText = (slack.postMessage as ReturnType<typeof vi.fn>).mock
-      .calls.at(-1)?.[0]?.text as string
+    const confirmText = (
+      slack.postMessage as ReturnType<typeof vi.fn>
+    ).mock.calls.at(-1)?.[0]?.text as string
     // The confirmation echoes the AI draft (title + the bug-report
     // description) so the requester can validate it inline without opening
     // the portal, and still links to the portal edit page.
@@ -624,13 +655,15 @@ describe("slack routes", () => {
     }))
     const repo = makeRepo()
     const linear = makeLinear()
-    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "i",
-      identifier: "BAS-11",
-      url: "https://l/BAS-11",
-      detailsCommentId: null,
-      state: { id: "s", name: "Triage", type: "triage" },
-    })
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {
+        id: "i",
+        identifier: "BAS-11",
+        url: "https://l/BAS-11",
+        detailsCommentId: null,
+        state: { id: "s", name: "Triage", type: "triage" },
+      }
+    )
     const cfg = {
       ...config,
       betterAuthUrl: "https://portal.example/",
@@ -643,6 +676,7 @@ describe("slack routes", () => {
       linear,
       slack,
       gemini: makeGemini(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const raw = eventsBody({
@@ -679,6 +713,7 @@ describe("slack routes", () => {
       linear: makeLinear(),
       slack,
       gemini: makeGemini(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const raw = eventsBody({
@@ -729,6 +764,7 @@ describe("slack routes", () => {
         linear,
         slack,
         gemini: makeGemini(),
+        orgAccess: makeOrgAccess(),
         auth: { getSession: vi.fn(async () => null) },
       })
       const raw = eventsBody({
@@ -765,13 +801,15 @@ describe("slack routes", () => {
     }))
     const repo = makeRepo()
     const linear = makeLinear()
-    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "i",
-      identifier: "BAS-10",
-      url: "https://l/BAS-10",
-      detailsCommentId: null,
-      state: { id: "s", name: "Triage", type: "triage" },
-    })
+    ;(linear.createHelpdeskIssue as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {
+        id: "i",
+        identifier: "BAS-10",
+        url: "https://l/BAS-10",
+        detailsCommentId: null,
+        state: { id: "s", name: "Triage", type: "triage" },
+      }
+    )
     const cfg = {
       ...config,
       betterAuthUrl: "https://portal.example",
@@ -784,6 +822,7 @@ describe("slack routes", () => {
       linear,
       slack,
       gemini: makeGemini(),
+      orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
     const raw = eventsBody({

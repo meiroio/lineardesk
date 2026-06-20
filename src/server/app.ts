@@ -3,7 +3,7 @@ import process from "node:process"
 import { Elysia } from "elysia"
 
 import { createAuthBridge } from "./auth"
-import { isAllowedEmail, readAppConfig } from "./config"
+import { readAppConfig } from "./config"
 import {
   buildRequesterReplyCommentBody,
   createLinearGateway,
@@ -19,6 +19,10 @@ import {
   RequestValidationError,
 } from "./request-validation"
 import { buildTranscript, createGeminiGateway } from "./ai/gemini"
+import {
+  createOrgAccessRepository,
+  resolvePortalOrganization,
+} from "./org-access"
 import { extractMention, isUrlVerification } from "./slack/events"
 import { createSlackGateway } from "./slack/gateway"
 import {
@@ -37,6 +41,7 @@ import type {
   HelpdeskRepository,
   LinearGateway,
   LinearIssueCommentSnapshot,
+  OrgAccessRepository,
   RequestRecord,
   SlackGateway,
   VerifyWebhook,
@@ -55,6 +60,7 @@ export type ApiDependencies = {
   repo: HelpdeskRepository
   linear: LinearGateway
   auth: AuthBridge
+  orgAccess: OrgAccessRepository
   slack?: SlackGateway
   gemini?: GeminiGateway
   verifyWebhook?: VerifyWebhook
@@ -104,6 +110,8 @@ async function scheduleBackground(request: Request, work: Promise<unknown>) {
 type ResolvedApiDependencies = ApiDependencies & {
   verifyWebhook: VerifyWebhook
 }
+
+type AuthorizedPortalSession = AuthSession & { organizationId: string }
 
 const ALLOWED_IMAGE_TYPES = [
   "image/png",
@@ -155,8 +163,8 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
       if (session instanceof Response) return session
 
-      const requests = await getDependencies().repo.listRequestsForEmail(
-        session.user.email
+      const requests = await getDependencies().repo.listRequestsForOrganization(
+        session.organizationId
       )
       return { requests: requests.map((record) => serializeRequest(record)) }
     })
@@ -184,7 +192,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
       })
       const record = await deps.repo.createRequest({
         requesterUserId: session.user.id,
-        organizationId: null,
+        organizationId: session.organizationId,
         requesterEmail: session.user.email,
         ...issueInput,
         severity,
@@ -202,9 +210,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
       )
       if (session instanceof Response) return session
 
-      const record = await getDependencies().repo.getRequestForEmail(
+      const record = await getDependencies().repo.getRequestForOrganization(
         params.id,
-        session.user.email
+        session.organizationId
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -236,9 +244,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         throw error
       }
 
-      const record = await deps.repo.getRequestForEmail(
+      const record = await deps.repo.getRequestForOrganization(
         params.id,
-        session.user.email
+        session.organizationId
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -268,9 +276,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         )
       }
 
-      const record = await deps.repo.getRequestForEmail(
+      const record = await deps.repo.getRequestForOrganization(
         params.id,
-        session.user.email
+        session.organizationId
       )
       if (!record) return json({ error: "not_found" }, 404)
 
@@ -287,9 +295,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         linearStateType: state.type,
       })
 
-      const updated = await deps.repo.getRequestForEmail(
+      const updated = await deps.repo.getRequestForOrganization(
         params.id,
-        session.user.email
+        session.organizationId
       )
       return { request: serializeRequest(updated ?? record) }
     })
@@ -315,9 +323,9 @@ export function createApiApp(dependencies?: ApiDependencies) {
         throw error
       }
 
-      const record = await deps.repo.getRequestForEmail(
+      const record = await deps.repo.getRequestForOrganization(
         params.id,
-        session.user.email
+        session.organizationId
       )
       if (!record) return json({ error: "not_found" }, 404)
       if (
@@ -749,6 +757,7 @@ function createDefaultDependencies(): ResolvedApiDependencies {
     repo: createHelpdeskRepository(),
     linear: createLinearGateway(config.linear),
     auth: createAuthBridge(config),
+    orgAccess: createOrgAccessRepository(),
     slack: config.slack ? createSlackGateway(config.slack.botToken) : undefined,
     gemini: config.gemini ? createGeminiGateway(config.gemini) : undefined,
     verifyWebhook: ({ rawBody, signature, timestamp }) => {
@@ -787,15 +796,19 @@ function withDefaultWebhookVerifier(
 async function requireAuthorizedSession(
   deps: ResolvedApiDependencies,
   headers: Headers
-): Promise<AuthSession | Response> {
+): Promise<AuthorizedPortalSession | Response> {
   const session = await deps.auth.getSession(headers)
   if (!session) return json({ error: "unauthorized" }, 401)
 
-  if (!isAllowedEmail(session.user.email, deps.config.allowedEmailDomains)) {
-    return json({ error: "forbidden_domain" }, 403)
+  const resolution = await resolvePortalOrganization(session, deps.orgAccess)
+  if (resolution.status === "multiple_organizations") {
+    return json({ error: "multiple_organizations" }, 409)
+  }
+  if (resolution.status !== "ok") {
+    return json({ error: "forbidden_org" }, 403)
   }
 
-  return session
+  return { ...session, organizationId: resolution.organizationId }
 }
 
 function serializeRequest(

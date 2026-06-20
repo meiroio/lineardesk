@@ -179,10 +179,7 @@ export type SlackGateway = {
     channel: string
     messageTs: string
   }) => Promise<string>
-  getThreadReplies: (input: {
-    channel: string
-    threadTs: string
-  }) => Promise<{
+  getThreadReplies: (input: { channel: string; threadTs: string }) => Promise<{
     messages: { user: string | null; text: string; files: SlackFileRef[] }[]
   }>
   downloadFile: (
@@ -241,10 +238,12 @@ export type LinearIssueWebhookSnapshot = {
 export type HelpdeskRepository = {
   createRequest: (input: CreateRequestRecordInput) => Promise<RequestRecord>
   getUserIdByEmail: (email: string) => Promise<string | null>
-  listRequestsForEmail: (email: string) => Promise<RequestRecord[]>
-  getRequestForEmail: (
+  listRequestsForOrganization: (
+    organizationId: string
+  ) => Promise<RequestRecord[]>
+  getRequestForOrganization: (
     id: string,
-    email: string
+    organizationId: string
   ) => Promise<RequestRecord | null>
   listOpenRequests: (limit: number) => Promise<RequestRecord[]>
   hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>

@@ -69,11 +69,13 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return rows[0]?.id ?? null
   }
 
-  async listRequestsForEmail(email: string): Promise<RequestRecord[]> {
+  async listRequestsForOrganization(
+    organizationId: string
+  ): Promise<RequestRecord[]> {
     const rows = await this.db
       .select()
       .from(helpdeskRequests)
-      .where(eq(helpdeskRequests.requesterEmail, email))
+      .where(eq(helpdeskRequests.organizationId, organizationId))
       .orderBy(desc(helpdeskRequests.createdAt))
     return rows.map(toRequestRecord)
   }
@@ -96,9 +98,9 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return rows.map(toRequestRecord)
   }
 
-  async getRequestForEmail(
+  async getRequestForOrganization(
     id: string,
-    email: string
+    organizationId: string
   ): Promise<RequestRecord | null> {
     const rows = await this.db
       .select()
@@ -106,7 +108,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .where(
         and(
           eq(helpdeskRequests.id, id),
-          eq(helpdeskRequests.requesterEmail, email)
+          eq(helpdeskRequests.organizationId, organizationId)
         )
       )
       .limit(1)
@@ -145,10 +147,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
   }
 
   async recordSlackEvent(eventId: string): Promise<void> {
-    await this.db
-      .insert(slackEvents)
-      .values({ eventId })
-      .onConflictDoNothing()
+    await this.db.insert(slackEvents).values({ eventId }).onConflictDoNothing()
   }
 
   async updateRequestFields(input: {
