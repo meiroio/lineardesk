@@ -17,14 +17,56 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { authClient } from "@/lib/auth-client"
 
+const loginReasonValues = [
+  "forbidden",
+  "forbidden_org",
+  "multiple_organizations",
+  "unauthorized",
+] as const
+
+type LoginReason = (typeof loginReasonValues)[number]
+
 type LoginSearch = {
-  reason?: string
+  reason?: LoginReason
   invitationId?: string
+}
+
+type MagicLinkInput = {
+  email: string
+  callbackURL: string
+  errorCallbackURL: string
+}
+
+type MagicLinkResult = {
+  error?: unknown
+}
+
+type SignInMagicLink = (
+  input: MagicLinkInput
+) => Promise<MagicLinkResult | void>
+
+export function parseLoginReason(reason: unknown): LoginReason | undefined {
+  return loginReasonValues.includes(reason as LoginReason)
+    ? (reason as LoginReason)
+    : undefined
+}
+
+export async function getMagicLinkStatus(
+  signInMagicLink: SignInMagicLink,
+  email: string
+): Promise<"sent" | "error"> {
+  const result = await signInMagicLink({
+    email,
+    callbackURL: "/",
+    errorCallbackURL: "/login",
+  })
+
+  return result?.error ? "error" : "sent"
 }
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search): LoginSearch => ({
-    reason: typeof search.reason === "string" ? search.reason : undefined,
+    reason: parseLoginReason(search.reason),
     invitationId:
       typeof search.invitationId === "string" ? search.invitationId : undefined,
   }),
@@ -83,13 +125,8 @@ function Login() {
             onSubmit={(event) => {
               event.preventDefault()
               setStatus("sending")
-              void authClient.signIn
-                .magicLink({
-                  email,
-                  callbackURL: "/",
-                  errorCallbackURL: "/login",
-                })
-                .then(() => setStatus("sent"))
+              void getMagicLinkStatus(authClient.signIn.magicLink, email)
+                .then(setStatus)
                 .catch(() => setStatus("error"))
             }}
           >
@@ -101,7 +138,12 @@ function Login() {
                 type="email"
                 autoComplete="username"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  setStatus((current) =>
+                    current === "sent" || current === "error" ? "idle" : current
+                  )
+                }}
                 required
               />
             </div>
@@ -115,12 +157,16 @@ function Login() {
                 : "Email me a sign-in link"}
             </Button>
             {status === "sent" ? (
-              <p className="text-sm text-muted-foreground">
+              <p
+                className="text-sm text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
                 If this email is approved, a sign-in link is on its way.
               </p>
             ) : null}
             {status === "error" ? (
-              <p className="text-sm text-destructive">
+              <p className="text-sm text-destructive" role="alert">
                 The sign-in link could not be sent. Try again in a moment.
               </p>
             ) : null}
