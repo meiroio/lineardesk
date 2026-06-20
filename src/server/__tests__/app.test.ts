@@ -224,6 +224,33 @@ describe("createApiApp", () => {
     await expect(response.json()).resolves.toEqual({ error: "forbidden_org" })
   })
 
+  it("rejects authenticated users with multiple organizations to choose from", async () => {
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => session) },
+      orgAccess: {
+        ...makeOrgAccess(),
+        findActiveOrganizationForEmail: vi.fn(async () => null),
+        hasMembership: vi.fn(async () => false),
+        listMembershipsForUser: vi.fn(async () => [
+          { organizationId: "org-1", role: "member" },
+          { organizationId: "org-2", role: "member" },
+        ]),
+      },
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests")
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: "multiple_organizations",
+    })
+  })
+
   it("lists requests for the resolved organization", async () => {
     const repo = makeRepo()
     const app = createApiApp({
@@ -315,6 +342,10 @@ describe("createApiApp", () => {
       },
     })
     expect(linear.listIssueComments).toHaveBeenCalledWith("linear-issue-id")
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
   })
 
   it("creates requester replies as Linear comments", async () => {
@@ -357,6 +388,10 @@ describe("createApiApp", () => {
       issueId: "linear-issue-id",
       body: "Requester: person@example.com\n\nIs it still broken?",
     })
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
   })
 
   it("hides the details comment from the activity timeline", async () => {
@@ -396,6 +431,10 @@ describe("createApiApp", () => {
     expect(data.request.comments.map((comment) => comment.id)).toEqual([
       "activity-comment",
     ])
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
   })
 
   it("closes the request with the chosen resolution", async () => {
@@ -430,6 +469,42 @@ describe("createApiApp", () => {
       resolution: "canceled",
     })
     expect(repo.updateRequestFromLinear).toHaveBeenCalled()
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
+  })
+
+  it("returns 404 without Linear side effects when closing a request outside the organization", async () => {
+    const repo = makeRepo()
+    repo.getRequestForOrganization = vi.fn(async () => null)
+    const linear = {
+      ...makeLinear(),
+      closeIssue: vi.fn(),
+    }
+    const app = createApiApp({
+      config,
+      repo,
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/close", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resolution: "canceled" }),
+      })
+    )
+
+    expect(response.status).toBe(404)
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
+    expect(linear.closeIssue).not.toHaveBeenCalled()
+    expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
   })
 
   it("rejects an invalid close resolution", async () => {
@@ -478,6 +553,10 @@ describe("createApiApp", () => {
       expect.objectContaining({ title: "Edited title", priority: 1 })
     )
     expect(repo.updateRequestFields).toHaveBeenCalled()
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
   })
 
   it("rejects editing a closed ticket with 409", async () => {
@@ -504,6 +583,10 @@ describe("createApiApp", () => {
       })
     )
     expect(res.status).toBe(409)
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "request-id",
+      "org-1"
+    )
   })
 })
 
