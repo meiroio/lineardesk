@@ -127,7 +127,7 @@ function Dashboard() {
     <PageShell
       eyebrow={<BrandMark />}
       title="Requests"
-      description="Track the current Linear status for requests you submitted."
+      description="Track the current Linear status for your organization's requests."
       actions={
         <>
           <Link to="/requests/new" className={buttonVariants()}>

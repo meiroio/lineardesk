@@ -4,5 +4,10 @@ import { getPortalAuthState } from "@/server/route-auth"
 
 export async function requirePortalAuth() {
   const auth = await getPortalAuthState()
-  if (!auth.authenticated) throw redirect({ to: "/login" })
+  if (!auth.authenticated) {
+    throw redirect({
+      to: "/login",
+      search: auth.reason ? { reason: auth.reason } : undefined,
+    })
+  }
 }
