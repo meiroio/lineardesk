@@ -170,7 +170,14 @@ describe("createApiApp", () => {
       requesterEmail: "person@example.com",
       priority: 2,
     })
-    expect(repo.createRequest).toHaveBeenCalled()
+    expect(repo.createRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requesterUserId: "user-id",
+        organizationId: null,
+        requesterEmail: "person@example.com",
+        source: "web",
+      })
+    )
   })
 
   it("rejects authenticated users outside the allow-listed domains", async () => {

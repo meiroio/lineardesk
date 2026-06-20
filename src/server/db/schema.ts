@@ -98,6 +98,7 @@ export const authOrganizations = pgTable("organization", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   logo: text("logo"),
+  metadata: text("metadata"),
   createdAt: timestamp("createdAt", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -141,7 +142,7 @@ export const authInvitations = pgTable(
     email: text("email").notNull(),
     role: text("role").notNull(),
     status: text("status").notNull().default("pending"),
-    expiresAt: timestamp("expiresAt", { withTimezone: true }),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
     inviterId: text("inviterId")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),

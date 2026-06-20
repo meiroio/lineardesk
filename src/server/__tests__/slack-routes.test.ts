@@ -460,6 +460,7 @@ describe("slack routes", () => {
       expect(repo.createRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           source: "slack",
+          organizationId: null,
           requesterEmail: "person@example.com",
           slackChannelId: "C1",
         })
