@@ -104,7 +104,7 @@ export async function seedCustomerOrganization(
     const proposedOrganizationId = existing[0]?.id ?? randomUUID()
     const updatedAt = new Date()
 
-    const [organization] = await tx
+    const [{ id: organizationId }] = await tx
       .insert(authOrganizations)
       .values({
         id: proposedOrganizationId,
@@ -116,7 +116,6 @@ export async function seedCustomerOrganization(
         set: { name: input.name, updatedAt },
       })
       .returning({ id: authOrganizations.id })
-    const organizationId = organization?.id ?? proposedOrganizationId
 
     const mappedDomains = await tx
       .select({

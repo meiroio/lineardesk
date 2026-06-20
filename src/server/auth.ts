@@ -1,11 +1,15 @@
 import process from "node:process"
 
 import { betterAuth } from "better-auth"
-import { magicLink, organization } from "better-auth/plugins"
+import {
+  magicLink,
+  organization as organizationPlugin,
+} from "better-auth/plugins"
 import { Pool } from "pg"
 
 import { pgPoolConfig } from "./db/client"
-import { createEmailSender, type EmailSender } from "./email"
+import { createEmailSender } from "./email"
+import type { EmailSender } from "./email"
 import { createOrgAccessRepository } from "./org-access"
 import type {
   AppConfig,
@@ -27,8 +31,9 @@ export function createAuthBridge(
   const emailSender = options.emailSender ?? createEmailSender(config.email)
 
   async function sendMagicLink(email: string, url: string) {
-    const organization = await orgAccess.findActiveOrganizationForEmail(email)
-    if (!organization) return
+    const matchingOrganization =
+      await orgAccess.findActiveOrganizationForEmail(email)
+    if (!matchingOrganization) return
 
     await emailSender.sendMagicLink({ email, url })
   }
@@ -39,7 +44,7 @@ export function createAuthBridge(
     secret: config.betterAuthSecret,
     baseURL: config.betterAuthUrl,
     plugins: [
-      organization({
+      organizationPlugin({
         allowUserToCreateOrganization: false,
         requireEmailVerificationOnInvitation: true,
         sendInvitationEmail: async (data) => {
@@ -70,10 +75,9 @@ export function createAuthBridge(
       user: {
         create: {
           before: async (user) => {
-            const organization = await orgAccess.findActiveOrganizationForEmail(
-              user.email
-            )
-            if (!organization) {
+            const matchingOrganization =
+              await orgAccess.findActiveOrganizationForEmail(user.email)
+            if (!matchingOrganization) {
               throw new Error("Email domain is not allowed")
             }
 

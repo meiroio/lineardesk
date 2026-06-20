@@ -7,7 +7,7 @@ export async function requirePortalAuth() {
   if (!auth.authenticated) {
     throw redirect({
       to: "/login",
-      search: auth.reason ? { reason: auth.reason } : undefined,
+      search: { reason: auth.reason },
     })
   }
 }
