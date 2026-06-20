@@ -59,12 +59,14 @@ export function createEmailSender(
       await sendEmail({
         to: input.email,
         subject: `Sign in to ${config.appName}`,
-        html: `<p>Use this secure link to sign in to ${escapeHtml(
+        html: `<p>Your ${escapeHtml(
           config.appName
-        )}.</p><p><a href="${escapeHtml(input.url)}">Sign in to ${escapeHtml(
+        )} sign-in link</p><p><a href="${escapeHtml(
+          input.url
+        )}">Sign in to ${escapeHtml(
           config.appName
         )}</a></p>`,
-        text: `Use this secure link to sign in to ${config.appName}:\n\n${input.url}`,
+        text: `Your ${config.appName} sign-in link:\n\n${input.url}`,
       })
     },
 
