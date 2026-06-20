@@ -12,7 +12,7 @@ Minimal external helpdesk portal for Linear. Users authenticate with Google, sub
 
 ## Local Development
 
-Copy `.env.example` to `.env.local` and fill in Google OAuth, Linear, and email provider values.
+Copy `.env.example` to `.env.local` and fill in Google OAuth, Linear, and any email provider overrides.
 
 ```bash
 docker compose up -d db
@@ -33,12 +33,15 @@ Required runtime variables:
 - `BETTER_AUTH_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `EMAIL_PROVIDER` — `log` for local development or `resend` for production email.
-- `EMAIL_FROM`
-- `EMAIL_APP_NAME`
-- `RESEND_API_KEY` — required when `EMAIL_PROVIDER=resend`; used for magic links and organization invitations.
 - `LINEAR_API_KEY`
 - `LINEAR_WEBHOOK_SECRET`
+
+Email settings:
+
+- `EMAIL_PROVIDER` — optional; defaults to `log`. Use `log` for local development or `resend` for production email.
+- `EMAIL_FROM` — optional; defaults to `LinearDesk <noreply@lineardesk.local>`.
+- `EMAIL_APP_NAME` — optional; defaults to `LinearDesk`.
+- `RESEND_API_KEY` — used for magic links and organization invitations. A non-empty key implies Resend when `EMAIL_PROVIDER` is omitted; `EMAIL_PROVIDER=resend` requires this value.
 
 Linear defaults:
 
@@ -61,6 +64,9 @@ CUSTOMER_ORG_SLUG='acme' \
 CUSTOMER_EMAIL_DOMAINS='acme.com,acme.io' \
 bun run org:seed
 ```
+
+Seed domains before first sign-in, magic-link attempt, or Slack intake for those
+users.
 
 The seed command also backfills existing tickets whose `requester_email` domain
 matches the seeded domains. It prints any remaining unmapped requester emails;
@@ -95,7 +101,8 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `DATABASE_URL` — Neon **pooled** URL
    - `BETTER_AUTH_URL` — your deployed origin, e.g. `https://lineardesk.vercel.app`
    - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_APP_NAME`, `RESEND_API_KEY`
+   - `RESEND_API_KEY` — enables Resend for magic links and organization invitations; `EMAIL_PROVIDER=resend` also requires it
+   - `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_APP_NAME` — optional email overrides; see the defaults above
    - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
    - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
    - `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` — optional; omit to disable Slack intake
@@ -138,7 +145,7 @@ Tickets created from any flow appear in the portal attributed to the Slack user'
 
 **Portal ticket editing**
 
-The ticket detail page has an **Edit** button visible to the ticket owner while the ticket is in a non-terminal state. It lets the owner change the Title, Description, and Severity; the update is applied to both the Linear issue and the portal database.
+The ticket detail page has an **Edit** button visible to approved users in the ticket's customer organization while the ticket is in a non-terminal state. It lets them change the Title, Description, and Severity; the update is applied to both the Linear issue and the portal database.
 
 **Phase 2 deploy step — migrate before deploying**
 
