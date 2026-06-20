@@ -3,6 +3,7 @@ import type {
   HelpdeskRepository,
   LinearGateway,
   LinearIssueSnapshot,
+  OrgAccessRepository,
   RequestRecord,
   SlackFileRef,
   SlackGateway,
@@ -15,11 +16,19 @@ export class SlackEmailMissingError extends Error {
   }
 }
 
+export class SlackEmailDomainNotAllowedError extends Error {
+  constructor() {
+    super("Slack email domain is not approved")
+    this.name = "SlackEmailDomainNotAllowedError"
+  }
+}
+
 export type SlackTicketDeps = {
   config: Pick<AppConfig, "linear">
   repo: Pick<HelpdeskRepository, "getUserIdByEmail" | "createRequest">
   linear: Pick<LinearGateway, "createHelpdeskIssue" | "uploadAsset">
   slack: Pick<SlackGateway, "getUserEmail" | "downloadFile" | "getPermalink">
+  orgAccess: Pick<OrgAccessRepository, "findActiveOrganizationForEmail">
 }
 
 export type CreateSlackTicketInput = {
@@ -46,6 +55,9 @@ export async function createSlackTicket(
 ): Promise<CreateSlackTicketResult> {
   const email = await deps.slack.getUserEmail(input.slackUserId)
   if (!email) throw new SlackEmailMissingError()
+  const organization =
+    await deps.orgAccess.findActiveOrganizationForEmail(email)
+  if (!organization) throw new SlackEmailDomainNotAllowedError()
 
   let droppedImages = 0
   const markdown: string[] = []
@@ -99,7 +111,7 @@ export async function createSlackTicket(
 
   const record = await deps.repo.createRequest({
     requesterUserId,
-    organizationId: null,
+    organizationId: organization.organizationId,
     requesterEmail: email,
     title: input.title,
     description,

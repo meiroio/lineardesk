@@ -113,12 +113,12 @@ function slackHeaders(secret: string, body: string) {
   }
 }
 
-function makeSlack(): SlackGateway {
+function makeSlack(options: { email?: string | null } = {}): SlackGateway {
   return {
     openView: vi.fn(async () => "V1"),
     updateView: vi.fn(async () => {}),
     postMessage: vi.fn(async () => ({ channel: "C1", ts: "1.2" })),
-    getUserEmail: vi.fn(async () => "person@example.com"),
+    getUserEmail: vi.fn(async () => options.email ?? "person@example.com"),
     downloadFile: vi.fn(async () => ({
       bytes: new Uint8Array([1]),
       contentType: "image/png",
@@ -487,7 +487,7 @@ describe("slack routes", () => {
       expect(repo.createRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           source: "slack",
-          organizationId: null,
+          organizationId: "org-1",
           requesterEmail: "person@example.com",
           slackChannelId: "C1",
         })
@@ -562,6 +562,80 @@ describe("slack routes", () => {
       errors: expect.any(Object),
     })
     expect(body.errors.expectedBehaviour).toBeDefined()
+  })
+
+  it("reports unmapped Slack email domains", async () => {
+    const orgAccess = {
+      ...makeOrgAccess(),
+      findActiveOrganizationForEmail: vi.fn(async () => null),
+    }
+    const slack = makeSlack({ email: "dev@evil.test" })
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => null) },
+      slack,
+      orgAccess,
+    })
+    const payloadObj = {
+      type: "view_submission",
+      user: { id: "U1" },
+      view: {
+        callback_id: "slack_ticket_submit",
+        private_metadata: JSON.stringify({
+          channel: "C1",
+          messageTs: "1.1",
+          threadTs: "1.1",
+          files: [],
+        }),
+        state: {
+          values: {
+            title: { title_input: { value: "Login broken" } },
+            expectedBehaviour: {
+              expectedBehaviour_input: {
+                value: "Should redirect to dashboard",
+              },
+            },
+            currentBehaviour: {
+              currentBehaviour_input: { value: "500 on submit" },
+            },
+            stepsToReproduce: {
+              stepsToReproduce_input: {
+                value: "1. Enter credentials 2. Submit",
+              },
+            },
+            severity: {
+              severity_input: { selected_option: { value: "high" } },
+            },
+          },
+        },
+      },
+    }
+    const raw = `payload=${encodeURIComponent(JSON.stringify(payloadObj))}`
+    const response = await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+
+    expect(response.status).toBe(200)
+    expect(orgAccess.findActiveOrganizationForEmail).toHaveBeenCalledWith(
+      "dev@evil.test"
+    )
+    expect(slack.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          "your email domain is not approved for LinearDesk"
+        ),
+      })
+    )
   })
 
   it("echoes the url_verification challenge", async () => {

@@ -31,6 +31,18 @@ function deps(email: string | null) {
       })),
       getPermalink: vi.fn(async () => "https://acme.slack.com/archives/C1/p12"),
     },
+    orgAccess: {
+      findActiveOrganizationForEmail: vi.fn(async () =>
+        email
+          ? {
+              organizationId: "org-1",
+              organizationName: "Example",
+              organizationSlug: "example",
+              domain: "meiro.io",
+            }
+          : null
+      ),
+    },
   }
 }
 
@@ -47,6 +59,23 @@ describe("createSlackTicket", () => {
         files: [],
       })
     ).rejects.toBeInstanceOf(SlackEmailMissingError)
+  })
+
+  it("rejects when the slack email domain is not approved", async () => {
+    const d = deps("dev@evil.test")
+    d.orgAccess.findActiveOrganizationForEmail = vi.fn(async () => null)
+
+    await expect(
+      createSlackTicket(d as unknown as SlackTicketDeps, {
+        slackUserId: "U1",
+        title: "T",
+        description: "D",
+        severity: 2,
+        channel: "C1",
+        threadTs: "1.2",
+        files: [],
+      })
+    ).rejects.toMatchObject({ name: "SlackEmailDomainNotAllowedError" })
   })
 
   it("creates an issue + record, attributes by email, embeds images", async () => {
@@ -89,6 +118,7 @@ describe("createSlackTicket", () => {
     expect(d.repo.createRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         requesterUserId: "user-1",
+        organizationId: "org-1",
         requesterEmail: "dev@meiro.io",
         source: "slack",
         slackChannelId: "C1",
