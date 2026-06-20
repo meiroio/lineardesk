@@ -14,6 +14,7 @@ export type EmailSender = {
     url: string
     inviterName?: string | null
     organizationName?: string | null
+    role?: string | null
   }) => Promise<void>
 }
 
@@ -72,6 +73,7 @@ export function createEmailSender(
 
     async sendInvitation(input) {
       const organizationName = input.organizationName || config.appName
+      const role = input.role || "member"
       const inviterText = input.inviterName
         ? `${input.inviterName} invited you to ${organizationName}.`
         : `You have been invited to ${organizationName}.`
@@ -79,10 +81,12 @@ export function createEmailSender(
       await sendEmail({
         to: input.email,
         subject: `Join ${organizationName}`,
-        html: `<p>${escapeHtml(inviterText)}</p><p><a href="${escapeHtml(
+        html: `<p>${escapeHtml(inviterText)}</p><p>Role: ${escapeHtml(
+          role
+        )}</p><p><a href="${escapeHtml(
           input.url
         )}">Accept invitation</a></p>`,
-        text: `${inviterText}\n\nAccept invitation:\n\n${input.url}`,
+        text: `${inviterText}\n\nRole: ${role}\n\nAccept invitation:\n\n${input.url}`,
       })
     },
   }

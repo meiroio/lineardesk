@@ -1,9 +1,16 @@
-export type EmailConfig = {
-  provider: "log" | "resend"
+type BaseEmailConfig = {
   appName: string
   from: string
-  resendApiKey?: string
 }
+
+export type EmailConfig =
+  | (BaseEmailConfig & {
+      provider: "log"
+    })
+  | (BaseEmailConfig & {
+      provider: "resend"
+      resendApiKey: string
+    })
 
 export type AppConfig = {
   email: EmailConfig

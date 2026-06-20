@@ -14,19 +14,24 @@ function readEmailConfig(env: Env): AppConfig["email"] {
   const resendApiKey = env.RESEND_API_KEY?.trim()
   const provider = explicitProvider || (resendApiKey ? "resend" : "log")
 
-  if (provider !== "resend" && provider !== "log") {
-    throw new Error("EMAIL_PROVIDER must be 'resend' or 'log'")
-  }
-  if (provider === "resend" && !resendApiKey) {
-    throw new Error("Missing required environment variable: RESEND_API_KEY")
-  }
-
-  return {
-    provider,
+  const base = {
     appName: env.EMAIL_APP_NAME?.trim() || "LinearDesk",
     from: env.EMAIL_FROM?.trim() || "LinearDesk <noreply@lineardesk.local>",
-    ...(resendApiKey ? { resendApiKey } : {}),
   }
+
+  if (provider === "resend") {
+    if (!resendApiKey) {
+      throw new Error("Missing required environment variable: RESEND_API_KEY")
+    }
+
+    return { ...base, provider: "resend", resendApiKey }
+  }
+
+  if (provider !== "log") {
+    throw new Error("EMAIL_PROVIDER must be 'resend' or 'log'")
+  }
+
+  return { ...base, provider: "log" }
 }
 
 function required(env: Env, name: string) {

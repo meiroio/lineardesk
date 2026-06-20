@@ -60,6 +60,39 @@ describe("createEmailSender", () => {
     ).rejects.toThrow("Resend email failed with 500 Internal Server Error")
   })
 
+  it("sends invitations through Resend with escaped user-controlled content", async () => {
+    const fetchFn = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 202 })
+    )
+    const sender = createEmailSender(config, fetchFn)
+
+    await sender.sendInvitation({
+      email: "invitee@example.com",
+      url: 'https://desk.example.com/invite?token=<abc>&next="desk"',
+      inviterName: 'Ada <Admin> "Lead"',
+      organizationName: "Acme & Co <Ops>",
+      role: 'Support <Lead> "Admin"',
+    })
+
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchFn.mock.calls[0] as Parameters<typeof fetch>
+    expect(url).toBe("https://api.resend.com/emails")
+    expect(init?.method).toBe("POST")
+    expect(init?.headers).toEqual({
+      Authorization: "Bearer re_123",
+      "Content-Type": "application/json",
+    })
+    expect(JSON.parse(String(init?.body))).toEqual({
+      from: "LinearDesk <support@example.com>",
+      to: "invitee@example.com",
+      subject: "Join Acme & Co <Ops>",
+      html:
+        '<p>Ada &lt;Admin&gt; &quot;Lead&quot; invited you to Acme &amp; Co &lt;Ops&gt;.</p><p>Role: Support &lt;Lead&gt; &quot;Admin&quot;</p><p><a href="https://desk.example.com/invite?token=&lt;abc&gt;&amp;next=&quot;desk&quot;">Accept invitation</a></p>',
+      text:
+        'Ada <Admin> "Lead" invited you to Acme & Co <Ops>.\n\nRole: Support <Lead> "Admin"\n\nAccept invitation:\n\nhttps://desk.example.com/invite?token=<abc>&next="desk"',
+    })
+  })
+
   it("logs local emails without calling fetch", async () => {
     const fetchFn = vi.fn<typeof fetch>()
     const info = vi.spyOn(console, "info").mockImplementation(() => {})
