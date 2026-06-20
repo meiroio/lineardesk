@@ -9,25 +9,24 @@ const DEFAULT_LINEAR_LABEL_NAME = "Bug"
 
 type Env = Record<string, string | undefined>
 
-export function parseAllowedDomains(value: string | undefined) {
-  if (!value) return []
+function readEmailConfig(env: Env): AppConfig["email"] {
+  const explicitProvider = env.EMAIL_PROVIDER?.trim().toLowerCase()
+  const resendApiKey = env.RESEND_API_KEY?.trim()
+  const provider = explicitProvider || (resendApiKey ? "resend" : "log")
 
-  return Array.from(
-    new Set(
-      value
-        .split(",")
-        .map((domain) => domain.trim().toLowerCase())
-        .filter(Boolean)
-    )
-  )
-}
+  if (provider !== "resend" && provider !== "log") {
+    throw new Error("EMAIL_PROVIDER must be 'resend' or 'log'")
+  }
+  if (provider === "resend" && !resendApiKey) {
+    throw new Error("Missing required environment variable: RESEND_API_KEY")
+  }
 
-export function isAllowedEmail(email: string, domains: readonly string[]) {
-  const atIndex = email.lastIndexOf("@")
-  if (atIndex <= 0 || atIndex === email.length - 1) return false
-
-  const domain = email.slice(atIndex + 1).toLowerCase()
-  return domains.some((allowedDomain) => allowedDomain === domain)
+  return {
+    provider,
+    appName: env.EMAIL_APP_NAME?.trim() || "LinearDesk",
+    from: env.EMAIL_FROM?.trim() || "LinearDesk <noreply@lineardesk.local>",
+    ...(resendApiKey ? { resendApiKey } : {}),
+  }
 }
 
 function required(env: Env, name: string) {
@@ -54,9 +53,7 @@ export function readAppConfig(env: Env = process.env): AppConfig {
     : undefined
 
   return {
-    allowedEmailDomains: parseAllowedDomains(
-      required(env, "ALLOWED_EMAIL_DOMAINS")
-    ),
+    email: readEmailConfig(env),
     databaseUrl: required(env, "DATABASE_URL"),
     betterAuthSecret: required(env, "BETTER_AUTH_SECRET"),
     betterAuthUrl: required(env, "BETTER_AUTH_URL"),

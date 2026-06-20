@@ -1,5 +1,12 @@
+export type EmailConfig = {
+  provider: "log" | "resend"
+  appName: string
+  from: string
+  resendApiKey?: string
+}
+
 export type AppConfig = {
-  allowedEmailDomains: string[]
+  email: EmailConfig
   databaseUrl: string
   betterAuthSecret: string
   betterAuthUrl: string

@@ -1,30 +1,52 @@
 import { describe, expect, it } from "vitest"
 
-import { isAllowedEmail, parseAllowedDomains, readAppConfig } from "../config"
+import { readAppConfig } from "../config"
 
-describe("allowed email domains", () => {
-  it("normalizes a comma-separated domain list", () => {
-    expect(parseAllowedDomains(" Example.com,example.org ,, Acme.IO ")).toEqual(
-      ["example.com", "example.org", "acme.io"]
-    )
+const base = {
+  DATABASE_URL: "postgres://x@localhost:5432/x",
+  BETTER_AUTH_SECRET: "s",
+  BETTER_AUTH_URL: "http://localhost:3000",
+  GOOGLE_CLIENT_ID: "g",
+  GOOGLE_CLIENT_SECRET: "gs",
+  LINEAR_API_KEY: "lin",
+  LINEAR_WEBHOOK_SECRET: "wh",
+}
+
+describe("readAppConfig email", () => {
+  it("uses the local log email provider by default", () => {
+    expect(readAppConfig(base).email).toEqual({
+      provider: "log",
+      appName: "LinearDesk",
+      from: "LinearDesk <noreply@lineardesk.local>",
+    })
   })
 
-  it("matches email domains case-insensitively", () => {
-    expect(isAllowedEmail("Ada@Example.COM", ["example.com"])).toBe(true)
-    expect(isAllowedEmail("ada@sub.example.com", ["example.com"])).toBe(false)
+  it("enables Resend when RESEND_API_KEY is present", () => {
+    expect(
+      readAppConfig({
+        ...base,
+        RESEND_API_KEY: "re_123",
+        EMAIL_FROM: "LinearDesk <support@example.com>",
+        EMAIL_APP_NAME: "Desk",
+      }).email
+    ).toEqual({
+      provider: "resend",
+      appName: "Desk",
+      from: "LinearDesk <support@example.com>",
+      resendApiKey: "re_123",
+    })
   })
 
-  it("rejects invalid emails and domains that are not allow-listed", () => {
-    expect(isAllowedEmail("not-an-email", ["example.com"])).toBe(false)
-    expect(isAllowedEmail("ada@evil.test", ["example.com"])).toBe(false)
-    expect(isAllowedEmail("ada@example.com", [])).toBe(false)
+  it("rejects EMAIL_PROVIDER=resend without a key", () => {
+    expect(() =>
+      readAppConfig({ ...base, EMAIL_PROVIDER: "resend" })
+    ).toThrow("RESEND_API_KEY")
   })
 })
 
 describe("readAppConfig", () => {
   it("uses the Linear Base defaults from the implementation plan", () => {
     const config = readAppConfig({
-      ALLOWED_EMAIL_DOMAINS: "example.com",
       DATABASE_URL:
         "postgres://lineardesk:lineardesk@localhost:5432/lineardesk",
       BETTER_AUTH_SECRET: "test-secret",
@@ -41,17 +63,6 @@ describe("readAppConfig", () => {
     expect(config.linear.labelName).toBe("Bug")
   })
 })
-
-const base = {
-  ALLOWED_EMAIL_DOMAINS: "example.com",
-  DATABASE_URL: "postgres://x@localhost:5432/x",
-  BETTER_AUTH_SECRET: "s",
-  BETTER_AUTH_URL: "http://localhost:3000",
-  GOOGLE_CLIENT_ID: "g",
-  GOOGLE_CLIENT_SECRET: "gs",
-  LINEAR_API_KEY: "lin",
-  LINEAR_WEBHOOK_SECRET: "wh",
-}
 
 describe("readAppConfig slack", () => {
   it("omits slack when env is absent", () => {
