@@ -44,6 +44,10 @@ function toAuthSession(value: unknown): AuthSession | null {
   if (!value || typeof value !== "object") return null
 
   const session = value as {
+    session?: {
+      activeOrganizationId?: unknown
+      token?: unknown
+    }
     user?: {
       id?: unknown
       email?: unknown
@@ -64,5 +68,11 @@ function toAuthSession(value: unknown): AuthSession | null {
       email: session.user.email,
       name: typeof session.user.name === "string" ? session.user.name : null,
     },
+    activeOrganizationId:
+      typeof session.session?.activeOrganizationId === "string"
+        ? session.session.activeOrganizationId
+        : null,
+    sessionToken:
+      typeof session.session?.token === "string" ? session.session.token : null,
   }
 }

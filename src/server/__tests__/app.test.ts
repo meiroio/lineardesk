@@ -33,6 +33,8 @@ const session: AuthSession = {
     email: "person@example.com",
     name: "Person Example",
   },
+  activeOrganizationId: "org-1",
+  sessionToken: "session-token",
 }
 
 function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
@@ -187,6 +189,7 @@ describe("createApiApp", () => {
       linear: makeLinear(),
       auth: {
         getSession: vi.fn(async () => ({
+          ...session,
           user: { ...session.user, email: "person@evil.test" },
         })),
       },

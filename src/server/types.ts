@@ -43,6 +43,44 @@ export type AuthSession = {
     email: string
     name?: string | null
   }
+  activeOrganizationId: string | null
+  sessionToken: string | null
+}
+
+export type OrganizationAccessRecord = {
+  organizationId: string
+  organizationName: string
+  organizationSlug: string
+  domain: string
+}
+
+export type OrganizationMembershipRecord = {
+  organizationId: string
+  role: string
+}
+
+export type PortalOrganizationResolution =
+  | { status: "ok"; organizationId: string }
+  | { status: "forbidden" }
+  | { status: "multiple_organizations" }
+
+export type OrgAccessRepository = {
+  findActiveOrganizationForEmail: (
+    email: string
+  ) => Promise<OrganizationAccessRecord | null>
+  ensureMember: (input: {
+    userId: string
+    organizationId: string
+    role: "member" | "admin" | "owner"
+  }) => Promise<void>
+  listMembershipsForUser: (
+    userId: string
+  ) => Promise<OrganizationMembershipRecord[]>
+  hasMembership: (userId: string, organizationId: string) => Promise<boolean>
+  setActiveOrganizationForSession: (input: {
+    sessionToken: string
+    organizationId: string
+  }) => Promise<void>
 }
 
 export type LinearIssueStateSnapshot = {
