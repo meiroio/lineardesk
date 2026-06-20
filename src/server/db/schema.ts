@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core"
 
@@ -40,6 +41,7 @@ export const authSessions = pgTable(
     userId: text("userId")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
+    activeOrganizationId: text("activeOrganizationId"),
   },
   (table) => [index("session_userId_idx").on(table.userId)]
 )
@@ -91,11 +93,100 @@ export const authVerifications = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)]
 )
 
+export const authOrganizations = pgTable("organization", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  createdAt: timestamp("createdAt", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
+export const authMembers = pgTable(
+  "member",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organizationId")
+      .notNull()
+      .references(() => authOrganizations.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("member_userId_idx").on(table.userId),
+    index("member_organizationId_idx").on(table.organizationId),
+    uniqueIndex("member_organizationId_userId_unique").on(
+      table.organizationId,
+      table.userId
+    ),
+  ]
+)
+
+export const authInvitations = pgTable(
+  "invitation",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organizationId")
+      .notNull()
+      .references(() => authOrganizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }),
+    inviterId: text("inviterId")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("invitation_email_idx").on(table.email),
+    index("invitation_organizationId_idx").on(table.organizationId),
+  ]
+)
+
+export const organizationEmailDomains = pgTable(
+  "organization_email_domains",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => authOrganizations.id, { onDelete: "cascade" }),
+    domain: text("domain").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("organization_email_domains_domain_unique").on(table.domain),
+    index("organization_email_domains_organization_id_idx").on(
+      table.organizationId
+    ),
+  ]
+)
+
 export const helpdeskRequests = pgTable(
   "helpdesk_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     requesterUserId: text("requester_user_id"),
+    organizationId: text("organization_id").references(
+      () => authOrganizations.id
+    ),
     requesterEmail: text("requester_email").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull(),
@@ -128,6 +219,7 @@ export const helpdeskRequests = pgTable(
   },
   (table) => [
     index("helpdesk_requests_requester_user_id_idx").on(table.requesterUserId),
+    index("helpdesk_requests_organization_id_idx").on(table.organizationId),
     index("helpdesk_requests_requester_email_idx").on(table.requesterEmail),
     index("helpdesk_requests_linear_issue_id_idx").on(table.linearIssueId),
     index("helpdesk_requests_linear_details_comment_id_idx").on(

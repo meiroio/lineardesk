@@ -33,6 +33,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .insert(helpdeskRequests)
       .values({
         requesterUserId: input.requesterUserId,
+        organizationId: input.organizationId,
         requesterEmail: input.requesterEmail,
         title: input.title,
         description: input.description,
@@ -194,6 +195,7 @@ export function toRequestRecord(row: HelpdeskRequestRow): RequestRecord {
   return {
     id: row.id,
     requesterUserId: row.requesterUserId,
+    organizationId: row.organizationId,
     requesterEmail: row.requesterEmail,
     title: row.title,
     description: row.description,

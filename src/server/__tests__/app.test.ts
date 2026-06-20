@@ -39,6 +39,7 @@ function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     id: "request-id",
     requesterUserId: "user-id",
+    organizationId: "org-1",
     requesterEmail: "person@example.com",
     title: "Cannot sign in",
     description: "Google sign-in fails after redirect.",

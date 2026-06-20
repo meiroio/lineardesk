@@ -155,6 +155,7 @@ export type SlackGateway = {
 export type RequestRecord = {
   id: string
   requesterUserId: string | null
+  organizationId: string | null
   requesterEmail: string
   title: string
   description: string
@@ -178,6 +179,7 @@ export type RequestRecord = {
 
 export type CreateRequestRecordInput = {
   requesterUserId: string | null
+  organizationId: string
   requesterEmail: string
   title: string
   description: string

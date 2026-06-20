@@ -12,6 +12,7 @@ function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     id: "r1",
     requesterUserId: "u1",
+    organizationId: "org-1",
     requesterEmail: "person@meiro.io",
     title: "Title",
     description: "Body",

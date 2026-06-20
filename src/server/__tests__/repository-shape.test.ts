@@ -7,6 +7,7 @@ describe("toRequestRecord", () => {
     const record = toRequestRecord({
       id: "r",
       requesterUserId: null,
+      organizationId: "org-1",
       requesterEmail: "a@b.com",
       title: "t",
       description: "d",
@@ -30,12 +31,14 @@ describe("toRequestRecord", () => {
     expect(record.source).toBe("slack")
     expect(record.slackChannelId).toBe("C1")
     expect(record.requesterUserId).toBeNull()
+    expect(record.organizationId).toBe("org-1")
   })
 
   it("coerces an unknown source to web", () => {
     const record = toRequestRecord({
       id: "r",
       requesterUserId: "u",
+      organizationId: "org-1",
       requesterEmail: "a@b.com",
       title: "t",
       description: "d",
@@ -57,5 +60,6 @@ describe("toRequestRecord", () => {
       lastLinearSyncedAt: new Date(0),
     })
     expect(record.source).toBe("web")
+    expect(record.organizationId).toBe("org-1")
   })
 })
