@@ -184,6 +184,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
       })
       const record = await deps.repo.createRequest({
         requesterUserId: session.user.id,
+        organizationId: null,
         requesterEmail: session.user.email,
         ...issueInput,
         severity,

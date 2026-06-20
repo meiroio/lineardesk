@@ -179,7 +179,7 @@ export type RequestRecord = {
 
 export type CreateRequestRecordInput = {
   requesterUserId: string | null
-  organizationId: string
+  organizationId: string | null
   requesterEmail: string
   title: string
   description: string

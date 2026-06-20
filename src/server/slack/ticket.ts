@@ -99,6 +99,7 @@ export async function createSlackTicket(
 
   const record = await deps.repo.createRequest({
     requesterUserId,
+    organizationId: null,
     requesterEmail: email,
     title: input.title,
     description,
