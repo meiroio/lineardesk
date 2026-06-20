@@ -275,6 +275,7 @@ export type VerifyWebhook = (input: {
 export type AuthBridge = {
   handler?: (request: Request) => Promise<Response> | Response
   getSession: (headers: Headers) => Promise<AuthSession | null>
+  sendMagicLinkForTest?: (email: string, url: string) => Promise<void>
 }
 
 export type TicketDraft = {
