@@ -12,7 +12,7 @@ Minimal external helpdesk portal for Linear. Users authenticate with Google, sub
 
 ## Local Development
 
-Copy `.env.example` to `.env.local` and fill in Google OAuth, Linear, and allowed domain values.
+Copy `.env.example` to `.env.local` and fill in Google OAuth, Linear, and email provider values.
 
 ```bash
 docker compose up -d db
@@ -33,7 +33,10 @@ Required runtime variables:
 - `BETTER_AUTH_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `ALLOWED_EMAIL_DOMAINS`
+- `EMAIL_PROVIDER` — `log` for local development or `resend` for production email.
+- `EMAIL_FROM`
+- `EMAIL_APP_NAME`
+- `RESEND_API_KEY` — required when `EMAIL_PROVIDER=resend`; used for magic links and organization invitations.
 - `LINEAR_API_KEY`
 - `LINEAR_WEBHOOK_SECRET`
 
@@ -43,6 +46,25 @@ Linear defaults:
 - `LINEAR_TEAM_KEY=BAS`
 - `LINEAR_INITIAL_STATE_NAME=Triage`
 - `LINEAR_LABEL_NAME=Bug`
+
+### Customer organizations
+
+Customer access is organization-scoped. A user who signs in with a verified
+email on an approved domain becomes a member of the matching Better Auth
+organization and can see that organization's tickets.
+
+Seed a customer organization and its domains before inviting users:
+
+```bash
+CUSTOMER_ORG_NAME='Acme Corp' \
+CUSTOMER_ORG_SLUG='acme' \
+CUSTOMER_EMAIL_DOMAINS='acme.com,acme.io' \
+bun run org:seed
+```
+
+The seed command also backfills existing tickets whose `requester_email` domain
+matches the seeded domains. It prints any remaining unmapped requester emails;
+map those before enforcing `helpdesk_requests.organization_id` as not null.
 
 ## API
 
@@ -72,12 +94,16 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
 3. **Environment variables** (Vercel → Settings → Environment Variables):
    - `DATABASE_URL` — Neon **pooled** URL
    - `BETTER_AUTH_URL` — your deployed origin, e.g. `https://lineardesk.vercel.app`
-   - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS`
+   - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   - `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_APP_NAME`, `RESEND_API_KEY`
    - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
    - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
    - `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` — optional; omit to disable Slack intake
    - `GEMINI_API_KEY` — optional; enables AI pre-fill of the Slack ticket modal from the thread
    - `GEMINI_MODEL` — optional override; defaults to `gemini-3.5-flash`
+
+   Production deployments need a transactional email provider. LinearDesk uses
+   Resend through an internal adapter; no SMTP server is required.
 
 4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
 
