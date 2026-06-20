@@ -722,6 +722,60 @@ describe("slack routes", () => {
     expect(confirmText).toContain("https://portal.example/requests/")
   })
 
+  it("reports unmapped Slack email domains for app_mention auto-create", async () => {
+    const slack = makeSlack({ email: "dev@evil.test" })
+    slack.getThreadReplies = vi.fn(async () => ({
+      messages: [{ user: "U1", text: "export 500s", files: [] }],
+    }))
+    const repo = makeRepo()
+    const linear = makeLinear()
+    const orgAccess = {
+      ...makeOrgAccess(),
+      findActiveOrganizationForEmail: vi.fn(async () => null),
+    }
+    const cfg = {
+      ...config,
+      slack: { signingSecret: "sign", botToken: "xoxb" },
+      gemini: { apiKey: "g", model: "gemini-3.5-flash" },
+    }
+    const app = createApiApp({
+      config: cfg,
+      repo,
+      linear,
+      slack,
+      gemini: makeGemini(),
+      orgAccess,
+      auth: { getSession: vi.fn(async () => null) },
+    })
+    const raw = eventsBody({
+      event_id: "EvUnmapped",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    const res = await app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(orgAccess.findActiveOrganizationForEmail).toHaveBeenCalledWith(
+      "dev@evil.test"
+    )
+    expect(linear.createHelpdeskIssue).not.toHaveBeenCalled()
+    expect(repo.createRequest).not.toHaveBeenCalled()
+    expect(slack.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C1",
+        threadTs: "1.1",
+        text: expect.stringContaining(
+          "your email domain is not approved for LinearDesk"
+        ),
+      })
+    )
+  })
+
   it("builds the portal link without a double slash when betterAuthUrl ends in /", async () => {
     const slack = makeSlack()
     slack.getThreadReplies = vi.fn(async () => ({

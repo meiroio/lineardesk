@@ -144,6 +144,28 @@ function parseResolution(body: unknown): CloseIssueResolution | null {
   return value === "resolved" || value === "canceled" ? value : null
 }
 
+function getSlackTicketFailureMessage(
+  error: unknown,
+  context: "modal" | "mention"
+) {
+  const reason =
+    error instanceof SlackEmailMissingError
+      ? "your Slack account has no email"
+      : error instanceof SlackEmailDomainNotAllowedError
+        ? "your email domain is not approved for LinearDesk"
+        : error instanceof Error
+          ? error.message
+          : "unknown error"
+
+  if (error instanceof SlackEmailMissingError) {
+    return ":warning: Your Slack account has no email, so I couldn't create a ticket."
+  }
+
+  return context === "modal"
+    ? `:x: Sorry — creating the ticket failed: ${reason}`
+    : `:x: Sorry — couldn't create a ticket from this thread: ${reason}`
+}
+
 export function createApiApp(dependencies?: ApiDependencies) {
   let defaultDependencies: ResolvedApiDependencies | null = null
   const getDependencies = () => {
@@ -615,23 +637,11 @@ export function createApiApp(dependencies?: ApiDependencies) {
             })
           } catch (error) {
             console.error("slack ticket creation failed", error)
-            const reason =
-              error instanceof SlackEmailMissingError
-                ? "your Slack account has no email"
-                : error instanceof SlackEmailDomainNotAllowedError
-                  ? "your email domain is not approved for LinearDesk"
-                  : error instanceof Error
-                    ? error.message
-                    : "unknown error"
-            const text =
-              error instanceof SlackEmailMissingError
-                ? ":warning: Your Slack account has no email, so I couldn't create a ticket."
-                : `:x: Sorry — creating the ticket failed: ${reason}`
             await slack
               .postMessage({
                 channel: parsed.meta.channel,
                 threadTs: parsed.meta.threadTs || undefined,
-                text,
+                text: getSlackTicketFailureMessage(error, "modal"),
               })
               .catch((postError) => {
                 console.error("slack fallback postMessage failed", postError)
@@ -740,23 +750,11 @@ export function createApiApp(dependencies?: ApiDependencies) {
           })
         } catch (error) {
           console.error("slack mention auto-create failed", error)
-          const reason =
-            error instanceof SlackEmailMissingError
-              ? "your Slack account has no email"
-              : error instanceof SlackEmailDomainNotAllowedError
-                ? "your email domain is not approved for LinearDesk"
-                : error instanceof Error
-                  ? error.message
-                  : "unknown error"
-          const text =
-            error instanceof SlackEmailMissingError
-              ? ":warning: Your Slack account has no email, so I couldn't create a ticket."
-              : `:x: Sorry — couldn't create a ticket from this thread: ${reason}`
           await slack
             .postMessage({
               channel: mention.channel,
               threadTs: mention.threadTs,
-              text,
+              text: getSlackTicketFailureMessage(error, "mention"),
             })
             .catch((e) =>
               console.error("slack mention fallback postMessage failed", e)
