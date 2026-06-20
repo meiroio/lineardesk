@@ -166,7 +166,7 @@
           "name": "expiresAt",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "inviterId": {
           "name": "inviterId",
@@ -396,6 +396,12 @@
         },
         "logo": {
           "name": "logo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
           "type": "text",
           "primaryKey": false,
           "notNull": false

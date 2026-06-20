@@ -4,7 +4,7 @@ CREATE TABLE "invitation" (
 	"email" text NOT NULL,
 	"role" text NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
-	"expiresAt" timestamp with time zone,
+	"expiresAt" timestamp with time zone NOT NULL,
 	"inviterId" text NOT NULL,
 	"createdAt" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -22,6 +22,7 @@ CREATE TABLE "organization" (
 	"name" text NOT NULL,
 	"slug" text NOT NULL,
 	"logo" text,
+	"metadata" text,
 	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
 	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "organization_slug_unique" UNIQUE("slug")
