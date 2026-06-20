@@ -1,6 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { RiGoogleFill } from "@remixicon/react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -45,6 +45,13 @@ type SignInMagicLink = (
   input: MagicLinkInput
 ) => Promise<MagicLinkResult | void>
 
+type MagicLinkRequestState = {
+  requestId: number
+  activeRequestId: number
+  submittedEmail: string
+  currentEmail: string
+}
+
 export function parseLoginReason(reason: unknown): LoginReason | undefined {
   return loginReasonValues.includes(reason as LoginReason)
     ? (reason as LoginReason)
@@ -64,6 +71,15 @@ export async function getMagicLinkStatus(
   return result?.error ? "error" : "sent"
 }
 
+export function isCurrentMagicLinkRequest({
+  requestId,
+  activeRequestId,
+  submittedEmail,
+  currentEmail,
+}: MagicLinkRequestState) {
+  return requestId === activeRequestId && submittedEmail === currentEmail
+}
+
 export const Route = createFileRoute("/login")({
   validateSearch: (search): LoginSearch => ({
     reason: parseLoginReason(search.reason),
@@ -79,6 +95,8 @@ function Login() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
   )
+  const emailRef = useRef(email)
+  const magicLinkRequestIdRef = useRef(0)
   const isForbiddenReason = reason === "forbidden" || reason === "forbidden_org"
 
   return (
@@ -124,10 +142,39 @@ function Login() {
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault()
+              const submittedEmail = email
+              const requestId = magicLinkRequestIdRef.current + 1
+              emailRef.current = submittedEmail
+              magicLinkRequestIdRef.current = requestId
               setStatus("sending")
-              void getMagicLinkStatus(authClient.signIn.magicLink, email)
-                .then(setStatus)
-                .catch(() => setStatus("error"))
+              void getMagicLinkStatus(
+                authClient.signIn.magicLink,
+                submittedEmail
+              )
+                .then((nextStatus) => {
+                  if (
+                    isCurrentMagicLinkRequest({
+                      requestId,
+                      activeRequestId: magicLinkRequestIdRef.current,
+                      submittedEmail,
+                      currentEmail: emailRef.current,
+                    })
+                  ) {
+                    setStatus(nextStatus)
+                  }
+                })
+                .catch(() => {
+                  if (
+                    isCurrentMagicLinkRequest({
+                      requestId,
+                      activeRequestId: magicLinkRequestIdRef.current,
+                      submittedEmail,
+                      currentEmail: emailRef.current,
+                    })
+                  ) {
+                    setStatus("error")
+                  }
+                })
             }}
           >
             <div className="flex flex-col gap-2">
@@ -139,9 +186,12 @@ function Login() {
                 autoComplete="username"
                 value={email}
                 onChange={(event) => {
-                  setEmail(event.target.value)
+                  const nextEmail = event.target.value
+                  emailRef.current = nextEmail
+                  magicLinkRequestIdRef.current += 1
+                  setEmail(nextEmail)
                   setStatus((current) =>
-                    current === "sent" || current === "error" ? "idle" : current
+                    current === "idle" ? current : "idle"
                   )
                 }}
                 required

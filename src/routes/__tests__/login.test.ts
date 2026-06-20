@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { getMagicLinkStatus, parseLoginReason } from "../login"
+import {
+  getMagicLinkStatus,
+  isCurrentMagicLinkRequest,
+  parseLoginReason,
+} from "../login"
 
 describe("login route helpers", () => {
   it("treats resolved Better Auth magic-link errors as failed sends", async () => {
@@ -27,5 +31,32 @@ describe("login route helpers", () => {
     )
     expect(parseLoginReason("unauthorized")).toBe("unauthorized")
     expect(parseLoginReason("unexpected")).toBeUndefined()
+  })
+
+  it("rejects stale magic-link responses after the input or active request changes", () => {
+    expect(
+      isCurrentMagicLinkRequest({
+        requestId: 1,
+        activeRequestId: 1,
+        submittedEmail: "person@example.com",
+        currentEmail: "other@example.com",
+      })
+    ).toBe(false)
+    expect(
+      isCurrentMagicLinkRequest({
+        requestId: 1,
+        activeRequestId: 2,
+        submittedEmail: "person@example.com",
+        currentEmail: "person@example.com",
+      })
+    ).toBe(false)
+    expect(
+      isCurrentMagicLinkRequest({
+        requestId: 2,
+        activeRequestId: 2,
+        submittedEmail: "person@example.com",
+        currentEmail: "person@example.com",
+      })
+    ).toBe(true)
   })
 })
