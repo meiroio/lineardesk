@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:migrate:prod": "bun run scripts/migrate-prod.ts"
+    "db:migrate:prod": "bun run scripts/migrate-prod.ts",
+    "org:seed": "bun run scripts/seed-customer-org.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
