@@ -17,6 +17,9 @@ describe("customer organization seed script", () => {
     expect(() => normalizeCustomerDomains("gmail.com")).toThrow(
       "Refusing to seed public email domain: gmail.com"
     )
+    expect(() => normalizeCustomerDomains("mail.com")).toThrow(
+      "Refusing to seed public email domain: mail.com"
+    )
     expect(() => normalizeCustomerDomains(".example.com")).toThrow(
       "Invalid domain: .example.com"
     )

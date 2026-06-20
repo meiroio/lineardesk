@@ -22,17 +22,40 @@ import type {
 type Database = NodePgDatabase<typeof schema>
 
 const PUBLIC_EMAIL_DOMAINS = new Set([
+  "126.com",
+  "163.com",
+  "aol.com",
+  "att.net",
+  "comcast.net",
+  "fastmail.com",
+  "fastmail.fm",
+  "gmx.com",
+  "gmx.net",
   "gmail.com",
   "googlemail.com",
+  "hey.com",
+  "hushmail.com",
   "outlook.com",
   "hotmail.com",
   "live.com",
   "icloud.com",
+  "mail.com",
   "me.com",
   "mac.com",
+  "msn.com",
+  "qq.com",
   "yahoo.com",
+  "ymail.com",
+  "rocketmail.com",
   "proton.me",
   "protonmail.com",
+  "sbcglobal.net",
+  "tutamail.com",
+  "tutanota.com",
+  "verizon.net",
+  "yandex.com",
+  "yandex.ru",
+  "zoho.com",
 ])
 
 export function getEmailDomain(email: string): string | null {
@@ -45,7 +68,7 @@ export function getEmailDomain(email: string): string | null {
 }
 
 export function isPublicEmailDomain(domain: string) {
-  return PUBLIC_EMAIL_DOMAINS.has(domain.toLowerCase())
+  return PUBLIC_EMAIL_DOMAINS.has(domain.trim().toLowerCase())
 }
 
 export function createOrgAccessRepository(
@@ -167,18 +190,15 @@ export async function resolvePortalOrganization(
       organizationId: domainOrg.organizationId,
       role: "member",
     })
-    if (session.sessionToken) {
-      await orgAccess.setActiveOrganizationForSession({
-        sessionToken: session.sessionToken,
-        organizationId: domainOrg.organizationId,
-      })
-    }
-    return { status: "ok", organizationId: domainOrg.organizationId }
   }
 
   const memberships = await orgAccess.listMembershipsForUser(session.user.id)
-  if (memberships.length === 1) {
-    const [membership] = memberships
+  const availableMemberships = domainOrg
+    ? includeMembership(memberships, domainOrg.organizationId)
+    : memberships
+
+  if (availableMemberships.length === 1) {
+    const [membership] = availableMemberships
     if (session.sessionToken) {
       await orgAccess.setActiveOrganizationForSession({
         sessionToken: session.sessionToken,
@@ -187,7 +207,24 @@ export async function resolvePortalOrganization(
     }
     return { status: "ok", organizationId: membership.organizationId }
   }
-  if (memberships.length > 1) return { status: "multiple_organizations" }
+  if (availableMemberships.length > 1) {
+    return { status: "multiple_organizations" }
+  }
 
   return { status: "forbidden" }
+}
+
+function includeMembership(
+  memberships: OrganizationMembershipRecord[],
+  organizationId: string
+): OrganizationMembershipRecord[] {
+  if (
+    memberships.some(
+      (membership) => membership.organizationId === organizationId
+    )
+  ) {
+    return memberships
+  }
+
+  return [...memberships, { organizationId, role: "member" }]
 }

@@ -44,6 +44,9 @@ describe("organization access", () => {
 
   it("recognizes public email domains", () => {
     expect(isPublicEmailDomain("gmail.com")).toBe(true)
+    expect(isPublicEmailDomain("aol.com")).toBe(true)
+    expect(isPublicEmailDomain("msn.com")).toBe(true)
+    expect(isPublicEmailDomain("mail.com")).toBe(true)
     expect(isPublicEmailDomain("example.com")).toBe(false)
   })
 
@@ -97,6 +100,30 @@ describe("organization access", () => {
     await expect(
       resolvePortalOrganization(makeSession(), orgAccess)
     ).resolves.toEqual({ status: "multiple_organizations" })
+  })
+
+  it("does not auto-select a domain org when the user has multiple memberships", async () => {
+    const orgAccess = makeOrgAccess({
+      findActiveOrganizationForEmail: vi.fn(async () => ({
+        organizationId: "org-1",
+        organizationName: "Example",
+        organizationSlug: "example",
+        domain: "example.com",
+      })),
+      listMembershipsForUser: vi.fn(async () => [
+        { organizationId: "org-2", role: "admin" },
+      ]),
+    })
+
+    await expect(
+      resolvePortalOrganization(makeSession(), orgAccess)
+    ).resolves.toEqual({ status: "multiple_organizations" })
+    expect(orgAccess.ensureMember).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId: "org-1",
+      role: "member",
+    })
+    expect(orgAccess.setActiveOrganizationForSession).not.toHaveBeenCalled()
   })
 
   it("returns forbidden without membership or domain access", async () => {
