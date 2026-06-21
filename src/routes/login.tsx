@@ -1,11 +1,11 @@
-import { Link, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { RiGoogleFill } from "@remixicon/react"
 import { useRef, useState } from "react"
 
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -52,6 +52,11 @@ type MagicLinkRequestState = {
   currentEmail: string
 }
 
+type LoginScreenProps = {
+  reason?: LoginReason
+  signInMagicLink?: SignInMagicLink
+}
+
 export function parseLoginReason(reason: unknown): LoginReason | undefined {
   return loginReasonValues.includes(reason as LoginReason)
     ? (reason as LoginReason)
@@ -91,6 +96,13 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { reason } = Route.useSearch()
+  return <LoginScreen reason={reason} />
+}
+
+export function LoginScreen({
+  reason,
+  signInMagicLink = authClient.signIn.magicLink,
+}: LoginScreenProps) {
   const [email, setEmail] = useState("")
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
@@ -147,10 +159,7 @@ function Login() {
               emailRef.current = submittedEmail
               magicLinkRequestIdRef.current = requestId
               setStatus("sending")
-              void getMagicLinkStatus(
-                authClient.signIn.magicLink,
-                submittedEmail
-              )
+              void getMagicLinkStatus(signInMagicLink, submittedEmail)
                 .then((nextStatus) => {
                   if (
                     isCurrentMagicLinkRequest({
@@ -212,7 +221,7 @@ function Login() {
                 role="status"
                 aria-live="polite"
               >
-                If this email is approved, a sign-in link is on its way.
+                You can close this tab, your login link is in the email.
               </p>
             ) : null}
             {status === "error" ? (
@@ -221,9 +230,6 @@ function Login() {
               </p>
             ) : null}
           </form>
-          <Link to="/" className={buttonVariants({ variant: "ghost" })}>
-            Back to requests
-          </Link>
         </CardContent>
       </Card>
     </main>

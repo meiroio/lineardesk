@@ -1,10 +1,26 @@
-import { describe, expect, it, vi } from "vitest"
+// @vitest-environment jsdom
+
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
+import { createElement } from "react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   getMagicLinkStatus,
   isCurrentMagicLinkRequest,
+  LoginScreen,
   parseLoginReason,
 } from "../login"
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe("login route helpers", () => {
   it("treats resolved Better Auth magic-link errors as failed sends", async () => {
@@ -60,3 +76,37 @@ describe("login route helpers", () => {
     ).toBe(true)
   })
 })
+
+describe("login route UI", () => {
+  it("does not render a back-to-requests link on the login screen", () => {
+    renderLoginRoute()
+
+    expect(screen.queryByRole("link", { name: /back to requests/i })).toBeNull()
+  })
+
+  it("tells users they can close the tab after requesting a magic link", async () => {
+    const signInMagicLink = vi.fn(async () => ({}))
+
+    renderLoginRoute({ signInMagicLink })
+    fireEvent.change(screen.getByLabelText(/work email/i), {
+      target: { value: "person@example.com" },
+    })
+    fireEvent.click(
+      screen.getByRole("button", { name: /email me a sign-in link/i })
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /you can close this tab, your login link is in the email/i
+        )
+      ).toBeTruthy()
+    })
+  })
+})
+
+function renderLoginRoute(
+  props: Partial<Parameters<typeof LoginScreen>[0]> = {}
+) {
+  render(createElement(LoginScreen, props))
+}
