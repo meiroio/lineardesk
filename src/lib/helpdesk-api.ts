@@ -1,30 +1,9 @@
-export type PortalRequest = {
-  id: string
-  requesterEmail: string
-  title: string
-  description: string
-  linearIssueId: string
-  linearIdentifier: string
-  linearUrl: string
-  linearStateId: string
-  linearStateName: string
-  linearStateType: string
-  source: "web" | "slack"
-  severity: number | null
-  linearDetailsCommentId: string | null
-  linearDetailsCommentedAt: string | null
-  createdAt: string
-  updatedAt: string
-  lastLinearSyncedAt: string
-  comments?: PortalRequestComment[]
-}
+import type { PortalRequest, UploadImageResponse } from "@/server/api/contracts"
 
-export type PortalRequestComment = {
-  id: string
-  body: string
-  authorName: string
-  createdAt: string
-}
+export type {
+  PortalRequest,
+  PortalRequestComment,
+} from "@/server/api/contracts"
 
 export class ApiError extends Error {
   constructor(
@@ -57,9 +36,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return readJson<T>(response)
 }
 
-export async function uploadImage(
-  file: File
-): Promise<{ assetUrl: string; filename: string }> {
+export async function uploadImage(file: File): Promise<UploadImageResponse> {
   const response = await fetch("/api/uploads", {
     method: "POST",
     credentials: "include",
@@ -70,7 +47,7 @@ export async function uploadImage(
     body: file,
   })
 
-  return readJson<{ assetUrl: string; filename: string }>(response)
+  return readJson<UploadImageResponse>(response)
 }
 
 export type RequestResolution = "resolved" | "canceled"

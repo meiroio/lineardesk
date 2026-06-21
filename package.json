@@ -9,6 +9,7 @@
     "start": "bun .output/server/index.mjs",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",
+    "test:feat": "vitest run --config vitest.config.ts src/server/__tests__/business",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
