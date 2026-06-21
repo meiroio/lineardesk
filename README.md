@@ -2,6 +2,8 @@
 
 Minimal external helpdesk portal for Linear. Users authenticate with Google, submit support requests, and watch the current Linear status without needing Linear access.
 
+> **Filing or tracking a request?** See the [User Guide](docs/USER_GUIDE.md) for how to use the portal and Slack intake. The rest of this README is for developers and operators.
+
 ## Stack
 
 - TanStack Start with the requested shadcn starter preset.
