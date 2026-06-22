@@ -25,25 +25,21 @@ import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest, RequestResolution } from "@/lib/helpdesk-api"
 import {
   ApiError,
-  apiPost,
-  closeRequest,
-  fetchRequest,
   formatCommentCount,
   formatDateTime,
   isDoneStatus,
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
-  updateRequest,
 } from "@/lib/helpdesk-api"
-import { requirePortalAuth } from "@/lib/route-guards"
 
 export const Route = createFileRoute("/requests/$requestId")({
-  beforeLoad: requirePortalAuth,
+  beforeLoad: ({ context }) => context.requirePortalAuth(),
   component: RequestDetail,
 })
 
 function RequestDetail() {
+  const { api } = Route.useRouteContext()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { requestId } = Route.useParams()
@@ -69,7 +65,7 @@ function RequestDetail() {
     error,
   } = useQuery({
     queryKey: requestKeys.detail(requestId),
-    queryFn: () => fetchRequest(requestId),
+    queryFn: () => api.fetchRequest(requestId),
     placeholderData: () =>
       queryClient
         .getQueryData<PortalRequest[]>(requestKeys.list)
@@ -107,7 +103,7 @@ function RequestDetail() {
     setReplyError(null)
 
     try {
-      await apiPost(`/api/requests/${requestId}/comments`, { body })
+      await api.apiPost(`/api/requests/${requestId}/comments`, { body })
       setReplyBody("")
       await queryClient.invalidateQueries({
         queryKey: requestKeys.detail(requestId),
@@ -129,7 +125,7 @@ function RequestDetail() {
     setCloseError(null)
 
     try {
-      const data = await closeRequest(requestId, resolution)
+      const data = await api.closeRequest(requestId, resolution)
       queryClient.setQueryData<PortalRequest>(
         requestKeys.detail(requestId),
         (old) =>
@@ -166,7 +162,7 @@ function RequestDetail() {
     setEditError(null)
 
     try {
-      const data = await updateRequest(requestId, {
+      const data = await api.updateRequest(requestId, {
         title: editTitle,
         description: editDescription,
         severity: editSeverity,

@@ -9,13 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest } from "@/lib/helpdesk-api"
-import { ApiError, apiPost, requestKeys } from "@/lib/helpdesk-api"
-import { requirePortalAuth } from "@/lib/route-guards"
+import { ApiError, requestKeys } from "@/lib/helpdesk-api"
 import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/requests/new")({
-  beforeLoad: requirePortalAuth,
+  beforeLoad: ({ context }) => context.requirePortalAuth(),
   component: NewRequest,
 })
 
@@ -27,6 +26,7 @@ const SEVERITY_OPTIONS = [
 ] as const
 
 function NewRequest() {
+  const { api } = Route.useRouteContext()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [title, setTitle] = useState("")
@@ -39,11 +39,20 @@ function NewRequest() {
   const [submitting, setSubmitting] = useState(false)
 
   const expectedPaste = usePasteImageUpload(
+    api.uploadImage,
     setExpectedBehaviour,
     setUploadError
   )
-  const currentPaste = usePasteImageUpload(setCurrentBehaviour, setUploadError)
-  const reproPaste = usePasteImageUpload(setStepsToReproduce, setUploadError)
+  const currentPaste = usePasteImageUpload(
+    api.uploadImage,
+    setCurrentBehaviour,
+    setUploadError
+  )
+  const reproPaste = usePasteImageUpload(
+    api.uploadImage,
+    setStepsToReproduce,
+    setUploadError
+  )
   const uploadsPending =
     expectedPaste.pending + currentPaste.pending + reproPaste.pending
 
@@ -63,13 +72,14 @@ function NewRequest() {
               setError(null)
               setUploadError(null)
               setSubmitting(true)
-              void apiPost<{ request: PortalRequest }>("/api/requests", {
-                title,
-                severity,
-                expectedBehaviour,
-                currentBehaviour,
-                stepsToReproduce,
-              })
+              void api
+                .apiPost<{ request: PortalRequest }>("/api/requests", {
+                  title,
+                  severity,
+                  expectedBehaviour,
+                  currentBehaviour,
+                  stepsToReproduce,
+                })
                 .then(({ request }) => {
                   queryClient.setQueryData(
                     requestKeys.detail(request.id),

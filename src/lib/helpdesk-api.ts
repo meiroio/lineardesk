@@ -3,6 +3,7 @@ import type { PortalRequest, UploadImageResponse } from "@/server/api/contracts"
 export type {
   PortalRequest,
   PortalRequestComment,
+  UploadImageResponse,
 } from "@/server/api/contracts"
 
 export class ApiError extends Error {

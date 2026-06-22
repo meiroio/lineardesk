@@ -8,22 +8,39 @@ import type { ResolvedApiDependencies } from "./dependencies"
 
 export type AuthorizedPortalSession = AuthSession & { organizationId: string }
 
+export type PortalAuthorizationResult =
+  | { ok: true; session: AuthorizedPortalSession }
+  | {
+      ok: false
+      status: 401 | 403 | 409
+      body: { error: string }
+    }
+
 export async function requireAuthorizedSession(
   deps: ResolvedApiDependencies,
   headers: Headers
-): Promise<AuthorizedPortalSession | Response> {
+): Promise<PortalAuthorizationResult> {
   const session = await deps.auth.getSession(headers)
-  if (!session) return json({ error: "unauthorized" }, 401)
+  if (!session) {
+    return { ok: false, status: 401, body: { error: "unauthorized" } }
+  }
 
   const resolution = await resolvePortalOrganization(session, deps.orgAccess)
   if (resolution.status === "multiple_organizations") {
-    return json({ error: "multiple_organizations" }, 409)
+    return {
+      ok: false,
+      status: 409,
+      body: { error: "multiple_organizations" },
+    }
   }
   if (resolution.status !== "ok") {
-    return json({ error: "forbidden_org" }, 403)
+    return { ok: false, status: 403, body: { error: "forbidden_org" } }
   }
 
-  return { ...session, organizationId: resolution.organizationId }
+  return {
+    ok: true,
+    session: { ...session, organizationId: resolution.organizationId },
+  }
 }
 
 export function serializeRequest(
@@ -46,13 +63,4 @@ export function serializeLinearComment(comment: LinearIssueCommentSnapshot) {
     ...comment,
     createdAt: comment.createdAt.toISOString(),
   }
-}
-
-export function json(value: unknown, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  })
 }

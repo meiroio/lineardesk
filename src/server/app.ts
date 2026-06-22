@@ -2,6 +2,7 @@ import { Elysia } from "elysia"
 
 import { createCronApi } from "./api/cron"
 import {
+  createApiDependenciesPlugin,
   createDefaultDependencies,
   withDefaultWebhookVerifier,
 } from "./api/dependencies"
@@ -10,7 +11,6 @@ import type {
   ResolvedApiDependencies,
 } from "./api/dependencies"
 import { createHealthApi } from "./api/health"
-import { json } from "./api/http"
 import { createLinearWebhooksApi } from "./api/linear-webhooks"
 import { createRequestsApi } from "./api/requests"
 import { createSlackApi } from "./api/slack"
@@ -29,15 +29,20 @@ export function createApiApp(dependencies?: ApiDependencies) {
     const handler = getDependencies().auth.handler
     return handler
       ? handler(request)
-      : json({ error: "Auth handler is not configured" }, 503)
+      : Response.json(
+          { error: "Auth handler is not configured" },
+          { status: 503 }
+        )
   }
+  const apiDependencies = createApiDependenciesPlugin(getDependencies)
 
   return new Elysia({ prefix: "/api" })
+    .use(apiDependencies)
     .use(createHealthApi())
-    .use(createRequestsApi(getDependencies))
-    .use(createUploadsApi(getDependencies))
-    .use(createLinearWebhooksApi(getDependencies))
-    .use(createCronApi(getDependencies))
-    .use(createSlackApi(getDependencies))
+    .use(createRequestsApi(apiDependencies))
+    .use(createUploadsApi(apiDependencies))
+    .use(createLinearWebhooksApi(apiDependencies))
+    .use(createCronApi(apiDependencies))
+    .use(createSlackApi(apiDependencies))
     .mount(authHandler)
 }

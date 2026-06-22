@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router"
+import { QueryClient } from "@tanstack/react-query"
 import {
   cleanup,
   fireEvent,
@@ -11,64 +12,29 @@ import {
 import { createElement } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { AppRouterContext } from "@/lib/app-context"
 import type { PortalRequest } from "@/lib/helpdesk-api"
 import { getRouter } from "@/router"
 
-const mockRouteGuards = vi.hoisted(() => ({
-  requirePortalAuth: vi.fn(),
-}))
-
-const mockAuthClient = vi.hoisted(() => ({
-  signOut: vi.fn(async () => undefined),
-}))
-
-const mockHelpdeskApi = vi.hoisted(() => {
-  class ApiError extends Error {
-    constructor(
-      readonly status: number,
-      message: string
-    ) {
-      super(message)
-      this.name = "ApiError"
-    }
-  }
+vi.mock("../__root", async () => {
+  const { Outlet, createRootRouteWithContext } =
+    await import("@tanstack/react-router")
 
   return {
-    ApiError,
-    apiPost: vi.fn(),
-    closeRequest: vi.fn(),
-    fetchRequest: vi.fn(),
-    fetchRequests: vi.fn(),
-    formatCommentCount: vi.fn((count: number) =>
-      count === 1 ? "1 comment" : `${count} comments`
-    ),
-    formatDateTime: vi.fn((value: string) => value),
-    isDoneStatus: vi.fn((type: string) =>
-      ["completed", "canceled", "duplicate"].includes(type)
-    ),
-    requestKeys: {
-      list: ["requests"] as const,
-      detail: (id: string) => ["request", id] as const,
-    },
-    statusClassName: vi.fn(() => ""),
-    updateRequest: vi.fn(),
-    uploadImage: vi.fn(),
-    LIVE_REFETCH_INTERVAL_MS: 60_000,
+    Route: createRootRouteWithContext<AppRouterContext>()({
+      component: Outlet,
+    }),
   }
 })
-
-vi.mock("@/lib/route-guards", () => mockRouteGuards)
-
-vi.mock("@/lib/auth-client", () => ({
-  authClient: mockAuthClient,
-}))
-
-vi.mock("@/lib/helpdesk-api", () => mockHelpdeskApi)
 
 const NOW = "2026-01-01T00:00:00.000Z"
 
 describe("portal route smoke", () => {
   let requests: PortalRequest[]
+  let apiPost: ReturnType<typeof vi.fn>
+  let fetchRequest: ReturnType<typeof vi.fn>
+  let fetchRequests: ReturnType<typeof vi.fn>
+  let requirePortalAuth: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     Object.defineProperty(window, "scrollTo", {
@@ -84,47 +50,45 @@ describe("portal route smoke", () => {
       }),
     ]
 
-    mockRouteGuards.requirePortalAuth.mockResolvedValue(undefined)
-    mockHelpdeskApi.fetchRequests.mockImplementation(async () => requests)
-    mockHelpdeskApi.fetchRequest.mockImplementation(async (id: string) => {
+    requirePortalAuth = vi.fn(async () => undefined)
+    fetchRequests = vi.fn(async () => requests)
+    fetchRequest = vi.fn(async (id: string) => {
       const request = requests.find((item) => item.id === id)
-      if (!request) throw new mockHelpdeskApi.ApiError(404, "not_found")
+      if (!request) throw new Error("not_found")
       return { ...request, comments: [] }
     })
-    mockHelpdeskApi.apiPost.mockImplementation(
-      async (path: string, body: unknown) => {
-        if (path !== "/api/requests") {
-          throw new Error(`Unexpected API path ${path}`)
-        }
-
-        const input = body as {
-          title: string
-          severity: string
-          expectedBehaviour: string
-          currentBehaviour: string
-          stepsToReproduce: string
-        }
-        const request = makeRequest({
-          id: "request-2",
-          title: input.title,
-          description: [
-            "Expected behaviour",
-            input.expectedBehaviour,
-            "",
-            "Current behaviour",
-            input.currentBehaviour,
-            "",
-            "Steps to reproduce",
-            input.stepsToReproduce,
-          ].join("\n"),
-          linearIdentifier: "BAS-102",
-          severity: input.severity === "urgent" ? 1 : 2,
-        })
-        requests = [request, ...requests]
-
-        return { request }
+    apiPost = vi.fn(async (path: string, body: unknown) => {
+      if (path !== "/api/requests") {
+        throw new Error(`Unexpected API path ${path}`)
       }
-    )
+
+      const input = body as {
+        title: string
+        severity: string
+        expectedBehaviour: string
+        currentBehaviour: string
+        stepsToReproduce: string
+      }
+      const request = makeRequest({
+        id: "request-2",
+        title: input.title,
+        description: [
+          "Expected behaviour",
+          input.expectedBehaviour,
+          "",
+          "Current behaviour",
+          input.currentBehaviour,
+          "",
+          "Steps to reproduce",
+          input.stepsToReproduce,
+        ].join("\n"),
+        linearIdentifier: "BAS-102",
+        severity: input.severity === "urgent" ? 1 : 2,
+      })
+      requests = [request, ...requests]
+
+      return { request }
+    })
   })
 
   afterEach(() => {
@@ -133,7 +97,31 @@ describe("portal route smoke", () => {
   })
 
   it("loads the dashboard, submits a request, and lands on the detail page", async () => {
-    renderPortal("/")
+    renderPortal("/", {
+      queryClient: new QueryClient({
+        defaultOptions: {
+          queries: { refetchOnWindowFocus: false, retry: false },
+        },
+      }),
+      api: {
+        apiPost: apiPost as AppRouterContext["api"]["apiPost"],
+        closeRequest: vi.fn(),
+        fetchRequest: fetchRequest as AppRouterContext["api"]["fetchRequest"],
+        fetchRequests:
+          fetchRequests as AppRouterContext["api"]["fetchRequests"],
+        updateRequest: vi.fn(),
+        uploadImage: vi.fn(),
+      },
+      auth: {
+        signOut: vi.fn(async () => undefined),
+        signIn: {
+          magicLink: vi.fn(async () => undefined),
+          social: vi.fn(async () => undefined),
+        },
+      },
+      requirePortalAuth:
+        requirePortalAuth as AppRouterContext["requirePortalAuth"],
+    })
 
     expect(
       await screen.findByRole("heading", { name: "Requests" })
@@ -161,7 +149,7 @@ describe("portal route smoke", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }))
 
     await waitFor(() => {
-      expect(mockHelpdeskApi.apiPost).toHaveBeenCalledWith("/api/requests", {
+      expect(apiPost).toHaveBeenCalledWith("/api/requests", {
         title: "Smoke flow CSV export failure",
         severity: "high",
         expectedBehaviour: "The CSV export downloads.",
@@ -176,12 +164,14 @@ describe("portal route smoke", () => {
     ).toBeTruthy()
     expect(screen.getAllByText("BAS-102")).toHaveLength(2)
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()
+    expect(requirePortalAuth).toHaveBeenCalled()
   })
 })
 
-function renderPortal(path: string) {
-  const router = getRouter()
+function renderPortal(path: string, context: AppRouterContext) {
+  const router = getRouter(context)
   router.update({
+    context,
     history: createMemoryHistory({
       initialEntries: [path],
     }),

@@ -1,8 +1,12 @@
 import { Elysia } from "elysia"
 
-import { UploadImageResponseModel } from "./contracts"
-import type { ApiDependencyResolver } from "./dependencies"
-import { json, requireAuthorizedSession } from "./http"
+import {
+  ErrorResponseModel,
+  UploadImageResponseModel,
+  ValidationErrorResponseModel,
+} from "./contracts"
+import type { ApiDependenciesPlugin } from "./dependencies"
+import { requireAuthorizedSession } from "./http"
 
 const ALLOWED_IMAGE_TYPES = [
   "image/png",
@@ -25,31 +29,39 @@ function sanitizeFilename(value: string | null): string {
   return cleaned || "image"
 }
 
-export function createUploadsApi(getDependencies: ApiDependencyResolver) {
-  return new Elysia({ name: "api.uploads" }).post(
+export function createUploadsApi(apiDependencies: ApiDependenciesPlugin) {
+  return new Elysia({ name: "api.uploads" }).use(apiDependencies).post(
     "/uploads",
-    async ({ request }) => {
-      const deps = getDependencies()
-      const session = await requireAuthorizedSession(deps, request.headers)
-      if (session instanceof Response) return session
+    async ({ request, resolveApiDependencies, status }) => {
+      const deps = resolveApiDependencies()
+      const authorization = await requireAuthorizedSession(
+        deps,
+        request.headers
+      )
+      if (!authorization.ok) {
+        return status(authorization.status, authorization.body)
+      }
 
       const contentType = (request.headers.get("content-type") ?? "")
         .split(";")[0]
         .trim()
         .toLowerCase()
       if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
-        return json(
-          { error: "validation_error", issues: ["Unsupported image type"] },
-          400
-        )
+        return status(400, {
+          error: "validation_error",
+          issues: ["Unsupported image type"],
+        })
       }
 
       const bytes = new Uint8Array(await request.arrayBuffer())
       if (bytes.byteLength === 0) {
-        return json({ error: "validation_error", issues: ["Empty file"] }, 400)
+        return status(400, {
+          error: "validation_error",
+          issues: ["Empty file"],
+        })
       }
       if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-        return json({ error: "file_too_large" }, 413)
+        return status(413, { error: "file_too_large" })
       }
 
       const filename = sanitizeFilename(request.headers.get("x-filename"))
@@ -59,10 +71,17 @@ export function createUploadsApi(getDependencies: ApiDependencyResolver) {
         bytes,
       })
 
-      return json({ assetUrl: asset.assetUrl, filename }, 201)
+      return status(201, { assetUrl: asset.assetUrl, filename })
     },
     {
-      response: UploadImageResponseModel,
+      response: {
+        201: UploadImageResponseModel,
+        400: ValidationErrorResponseModel,
+        401: ErrorResponseModel,
+        403: ErrorResponseModel,
+        409: ErrorResponseModel,
+        413: ErrorResponseModel,
+      },
     }
   )
 }

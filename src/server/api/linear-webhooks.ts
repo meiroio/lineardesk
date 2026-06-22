@@ -7,17 +7,16 @@ import {
   LINEAR_WEBHOOK_SIGNATURE_HEADER,
   LINEAR_WEBHOOK_TS_HEADER,
 } from "../webhooks"
-import { LinearWebhookResponseModel } from "./contracts"
-import type { ApiDependencyResolver } from "./dependencies"
-import { json } from "./http"
+import { ErrorResponseModel, LinearWebhookResponseModel } from "./contracts"
+import type { ApiDependenciesPlugin } from "./dependencies"
 
 export function createLinearWebhooksApi(
-  getDependencies: ApiDependencyResolver
+  apiDependencies: ApiDependenciesPlugin
 ) {
-  return new Elysia({ name: "api.linear-webhooks" }).post(
+  return new Elysia({ name: "api.linear-webhooks" }).use(apiDependencies).post(
     "/linear/webhook",
-    async ({ request }) => {
-      const deps = getDependencies()
+    async ({ request, resolveApiDependencies, status }) => {
+      const deps = resolveApiDependencies()
       const rawBody = await request.text()
       let payload: unknown
 
@@ -28,12 +27,12 @@ export function createLinearWebhooksApi(
           timestamp: request.headers.get(LINEAR_WEBHOOK_TS_HEADER),
         })
       } catch {
-        return json({ error: "invalid_webhook" }, 400)
+        return status(400, { error: "invalid_webhook" })
       }
 
       const eventKey = getLinearWebhookEventKey(payload)
       if (await deps.repo.hasProcessedWebhookEvent(eventKey)) {
-        return json({ ok: true, duplicate: true })
+        return { ok: true, duplicate: true }
       }
 
       const snapshot = extractIssueSnapshotFromWebhook(payload)
@@ -45,10 +44,13 @@ export function createLinearWebhooksApi(
         hashRawBody(rawBody)
       )
 
-      return json({ ok: true, ignored: !snapshot })
+      return { ok: true, ignored: !snapshot }
     },
     {
-      response: LinearWebhookResponseModel,
+      response: {
+        200: LinearWebhookResponseModel,
+        400: ErrorResponseModel,
+      },
     }
   )
 }

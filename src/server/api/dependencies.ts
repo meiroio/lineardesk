@@ -1,3 +1,5 @@
+import { Elysia } from "elysia"
+
 import { createAuthBridge } from "../auth"
 import { readAppConfig } from "../config"
 import { createGeminiGateway } from "../ai/gemini"
@@ -33,6 +35,19 @@ export type ResolvedApiDependencies = ApiDependencies & {
 }
 
 export type ApiDependencyResolver = () => ResolvedApiDependencies
+
+export function createApiDependenciesPlugin(
+  resolveApiDependencies: ApiDependencyResolver
+) {
+  return new Elysia({ name: "api.dependencies" }).decorate(
+    "resolveApiDependencies",
+    resolveApiDependencies
+  )
+}
+
+export type ApiDependenciesPlugin = ReturnType<
+  typeof createApiDependenciesPlugin
+>
 
 export function createDefaultDependencies(): ResolvedApiDependencies {
   const config = readAppConfig()

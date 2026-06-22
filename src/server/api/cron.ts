@@ -3,33 +3,35 @@ import process from "node:process"
 import { Elysia } from "elysia"
 
 import { reconcileOpenRequests } from "../reconcile"
-import { CronReconcileResponseModel } from "./contracts"
-import type { ApiDependencyResolver } from "./dependencies"
-import { json } from "./http"
+import { CronReconcileResponseModel, ErrorResponseModel } from "./contracts"
+import type { ApiDependenciesPlugin } from "./dependencies"
 
-export function createCronApi(getDependencies: ApiDependencyResolver) {
-  return new Elysia({ name: "api.cron" }).get(
+export function createCronApi(apiDependencies: ApiDependenciesPlugin) {
+  return new Elysia({ name: "api.cron" }).use(apiDependencies).get(
     "/cron/reconcile",
-    async ({ request }) => {
+    async ({ request, resolveApiDependencies, status }) => {
       const secret = process.env.CRON_SECRET
       if (
         !secret ||
         request.headers.get("authorization") !== `Bearer ${secret}`
       ) {
-        return json({ error: "unauthorized" }, 401)
+        return status(401, { error: "unauthorized" })
       }
 
-      const deps = getDependencies()
+      const deps = resolveApiDependencies()
       const result = await reconcileOpenRequests({
         repo: deps.repo,
         linear: deps.linear,
         limit: 200,
       })
 
-      return json({ ok: true, ...result })
+      return { ok: true, ...result }
     },
     {
-      response: CronReconcileResponseModel,
+      response: {
+        200: CronReconcileResponseModel,
+        401: ErrorResponseModel,
+      },
     }
   )
 }

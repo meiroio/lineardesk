@@ -7,6 +7,8 @@ export const ErrorResponseModel = t.Object({
   error: t.String(),
 })
 
+export const EmptyResponseModel = t.Literal("")
+
 export const ValidationErrorResponseModel = t.Object({
   error: t.Literal("validation_error"),
   issues: t.Array(t.String()),
@@ -104,6 +106,25 @@ export const CronReconcileResponseModel = t.Object({
   checked: t.Number(),
   updated: t.Number(),
 })
+
+export const SlackInteractivityErrorResponseModel = t.Object({
+  response_action: t.Literal("errors"),
+  errors: t.Record(t.String(), t.String()),
+})
+
+export const SlackUrlVerificationResponseModel = t.Object({
+  challenge: t.String(),
+})
+
+export const SlackInteractivityResponseModel = t.Union([
+  EmptyResponseModel,
+  SlackInteractivityErrorResponseModel,
+])
+
+export const SlackEventsResponseModel = t.Union([
+  EmptyResponseModel,
+  SlackUrlVerificationResponseModel,
+])
 
 export type PortalRequest = typeof PortalRequestModel.static
 export type PortalRequestComment = typeof PortalRequestCommentModel.static

@@ -113,6 +113,108 @@ function makeOrgAccess() {
 }
 
 describe("createApiApp", () => {
+  it("declares API dependencies and per-status response contracts through Elysia", () => {
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear: makeLinear(),
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const appSingleton = app as unknown as {
+      singleton: { decorator: Record<string, unknown> }
+    }
+    expect(appSingleton.singleton.decorator.resolveApiDependencies).toEqual(
+      expect.any(Function)
+    )
+
+    const responseStatuses = (method: string, path: string) => {
+      const route = app.routes.find(
+        (candidate) => candidate.method === method && candidate.path === path
+      )
+      expect(route, `${method} ${path}`).toBeDefined()
+      return Object.keys(route?.hooks.response ?? {}).sort()
+    }
+
+    expect(responseStatuses("GET", "/api/requests")).toEqual([
+      "200",
+      "401",
+      "403",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/requests")).toEqual([
+      "201",
+      "400",
+      "401",
+      "403",
+      "409",
+    ])
+    expect(responseStatuses("GET", "/api/requests/:id")).toEqual([
+      "200",
+      "401",
+      "403",
+      "404",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/requests/:id/comments")).toEqual([
+      "201",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/requests/:id/close")).toEqual([
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/requests/:id/update")).toEqual([
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/uploads")).toEqual([
+      "201",
+      "400",
+      "401",
+      "403",
+      "409",
+      "413",
+    ])
+    expect(responseStatuses("POST", "/api/linear/webhook")).toEqual([
+      "200",
+      "400",
+    ])
+    expect(responseStatuses("GET", "/api/cron/reconcile")).toEqual([
+      "200",
+      "401",
+    ])
+    expect(responseStatuses("POST", "/api/slack/commands")).toEqual([
+      "200",
+      "400",
+      "401",
+      "404",
+    ])
+    expect(responseStatuses("POST", "/api/slack/interactivity")).toEqual([
+      "200",
+      "401",
+      "404",
+    ])
+    expect(responseStatuses("POST", "/api/slack/events")).toEqual([
+      "200",
+      "401",
+      "404",
+    ])
+  })
+
   it("mounts the Better Auth handler under the Elysia API app", async () => {
     const authHandler = vi.fn(async (request: Request) => {
       return Response.json({ path: new URL(request.url).pathname })

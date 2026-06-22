@@ -1,12 +1,15 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useState } from "react"
+import {
+  HeadContent,
+  Scripts,
+  createRootRouteWithContext,
+} from "@tanstack/react-router"
 
+import type { AppRouterContext } from "@/lib/app-context"
 import { themeInitScript } from "@/lib/theme"
 
 import appCss from "../styles.css?url"
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<AppRouterContext>()({
   head: () => ({
     meta: [
       {
@@ -31,10 +34,7 @@ export const Route = createRootRoute({
         href: "/favicon.ico",
         sizes: "32x32",
       },
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      ...(appCss ? [{ rel: "stylesheet", href: appCss }] : []),
     ],
     scripts: [
       {
@@ -52,15 +52,6 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: { refetchOnWindowFocus: false, retry: 1 },
-        },
-      })
-  )
-
   return (
     // The theme init script sets the `class`/`color-scheme` on <html> before
     // hydration, so the client intentionally diverges from the SSR markup here.
@@ -69,9 +60,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
+        {children}
         <Scripts />
       </body>
     </html>

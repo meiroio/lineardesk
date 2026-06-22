@@ -1,11 +1,15 @@
 import type { ClipboardEvent, Dispatch, SetStateAction } from "react"
 import { useCallback, useRef, useState } from "react"
 
-import { ApiError, uploadImage } from "@/lib/helpdesk-api"
+import { ApiError } from "@/lib/helpdesk-api"
+import type { UploadImageResponse } from "@/lib/helpdesk-api"
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 
+type UploadImage = (file: File) => Promise<UploadImageResponse>
+
 export function usePasteImageUpload(
+  uploadImage: UploadImage,
   setValue: Dispatch<SetStateAction<string>>,
   onError: (message: string) => void
 ) {

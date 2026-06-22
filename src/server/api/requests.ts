@@ -15,14 +15,16 @@ import {
   CloseRequestBodyModel,
   CreateCommentBodyModel,
   CreateRequestBodyModel,
+  ErrorResponseModel,
   PortalRequestListResponseModel,
+  PortalRequestCommentResponseModel,
   PortalRequestResponseModel,
   RequestParamsModel,
   UpdateRequestBodyModel,
+  ValidationErrorResponseModel,
 } from "./contracts"
-import type { ApiDependencyResolver } from "./dependencies"
+import type { ApiDependenciesPlugin } from "./dependencies"
 import {
-  json,
   requireAuthorizedSession,
   serializeLinearComment,
   serializeRequest,
@@ -34,42 +36,60 @@ function parseResolution(body: unknown): CloseIssueResolution | null {
   return value === "resolved" || value === "canceled" ? value : null
 }
 
-export function createRequestsApi(getDependencies: ApiDependencyResolver) {
+export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
   return new Elysia({ name: "api.requests" })
+    .use(apiDependencies)
     .get(
       "/requests",
-      async ({ request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         const requests = await deps.repo.listRequestsForOrganization(
           session.organizationId
         )
-        return json({
+        return {
           requests: requests.map((record) => serializeRequest(record)),
-        })
+        }
       },
       {
-        response: PortalRequestListResponseModel,
+        response: {
+          200: PortalRequestListResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
     .post(
       "/requests",
-      async ({ body, request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ body, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         let input: ReturnType<typeof parseCreateRequestInput>
         try {
           input = parseCreateRequestInput(body)
         } catch (error) {
           if (error instanceof RequestValidationError) {
-            return json(
-              { error: "validation_error", issues: error.issues },
-              400
-            )
+            return status(400, {
+              error: "validation_error",
+              issues: error.issues,
+            })
           }
 
           throw error
@@ -92,24 +112,37 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
           source: "web",
         })
 
-        return json({ request: serializeRequest(record) }, 201)
+        return status(201, { request: serializeRequest(record) })
       },
       {
         body: CreateRequestBodyModel,
+        response: {
+          201: PortalRequestResponseModel,
+          400: ValidationErrorResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
     .get(
       "/requests/:id",
-      async ({ params, request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ params, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         const record = await deps.repo.getRequestForOrganization(
           params.id,
           session.organizationId
         )
-        if (!record) return json({ error: "not_found" }, 404)
+        if (!record) return status(404, { error: "not_found" })
 
         const allComments = await deps.linear.listIssueComments(
           record.linearIssueId
@@ -121,29 +154,41 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
             !comment.body.includes(detailsMarker)
         )
 
-        return json({ request: serializeRequest(record, comments) })
+        return { request: serializeRequest(record, comments) }
       },
       {
         params: RequestParamsModel,
-        response: PortalRequestResponseModel,
+        response: {
+          200: PortalRequestResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          404: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
     .post(
       "/requests/:id/comments",
-      async ({ params, body, request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ params, body, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         let input: ReturnType<typeof parseCreateCommentInput>
         try {
           input = parseCreateCommentInput(body)
         } catch (error) {
           if (error instanceof RequestValidationError) {
-            return json(
-              { error: "validation_error", issues: error.issues },
-              400
-            )
+            return status(400, {
+              error: "validation_error",
+              issues: error.issues,
+            })
           }
 
           throw error
@@ -153,7 +198,7 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
           params.id,
           session.organizationId
         )
-        if (!record) return json({ error: "not_found" }, 404)
+        if (!record) return status(404, { error: "not_found" })
 
         const comment = await deps.linear.createIssueComment({
           issueId: record.linearIssueId,
@@ -163,36 +208,47 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
           }),
         })
 
-        return json({ comment: serializeLinearComment(comment) }, 201)
+        return status(201, { comment: serializeLinearComment(comment) })
       },
       {
         body: CreateCommentBodyModel,
         params: RequestParamsModel,
+        response: {
+          201: PortalRequestCommentResponseModel,
+          400: ValidationErrorResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          404: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
     .post(
       "/requests/:id/close",
-      async ({ params, body, request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ params, body, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         const resolution = parseResolution(body)
         if (!resolution) {
-          return json(
-            {
-              error: "validation_error",
-              issues: ["resolution must be 'resolved' or 'canceled'"],
-            },
-            400
-          )
+          return status(400, {
+            error: "validation_error",
+            issues: ["resolution must be 'resolved' or 'canceled'"],
+          })
         }
 
         const record = await deps.repo.getRequestForOrganization(
           params.id,
           session.organizationId
         )
-        if (!record) return json({ error: "not_found" }, 404)
+        if (!record) return status(404, { error: "not_found" })
 
         const state = await deps.linear.closeIssue({
           issueId: record.linearIssueId,
@@ -216,28 +272,39 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
       {
         body: CloseRequestBodyModel,
         params: RequestParamsModel,
+        response: {
+          200: PortalRequestResponseModel,
+          400: ValidationErrorResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          404: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
     .post(
       "/requests/:id/update",
-      async ({ params, body, request }) => {
-        const deps = getDependencies()
-        const session = await requireAuthorizedSession(deps, request.headers)
-        if (session instanceof Response) return session
+      async ({ params, body, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
 
         let input: ReturnType<typeof parseUpdateRequestInput>
         try {
           input = parseUpdateRequestInput(body)
         } catch (error) {
           if (error instanceof RequestValidationError) {
-            return json(
-              {
-                error: "validation_error",
-                issues: error.issues,
-                fields: error.fields,
-              },
-              400
-            )
+            return status(400, {
+              error: "validation_error",
+              issues: error.issues,
+              fields: error.fields,
+            })
           }
           throw error
         }
@@ -246,13 +313,13 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
           params.id,
           session.organizationId
         )
-        if (!record) return json({ error: "not_found" }, 404)
+        if (!record) return status(404, { error: "not_found" })
         if (
           ["completed", "canceled", "duplicate"].includes(
             record.linearStateType
           )
         ) {
-          return json({ error: "ticket_closed" }, 409)
+          return status(409, { error: "ticket_closed" })
         }
 
         await deps.linear.updateIssueFields({
@@ -272,6 +339,14 @@ export function createRequestsApi(getDependencies: ApiDependencyResolver) {
       {
         body: UpdateRequestBodyModel,
         params: RequestParamsModel,
+        response: {
+          200: PortalRequestResponseModel,
+          400: ValidationErrorResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          404: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
       }
     )
 }

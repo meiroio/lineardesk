@@ -27,27 +27,24 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
-import { authClient } from "@/lib/auth-client"
 import {
   ApiError,
-  fetchRequest,
-  fetchRequests,
   formatDateTime,
   isDoneStatus,
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
-import { requirePortalAuth } from "@/lib/route-guards"
 
 export const Route = createFileRoute("/")({
-  beforeLoad: requirePortalAuth,
+  beforeLoad: ({ context }) => context.requirePortalAuth(),
   component: Dashboard,
 })
 
 const PAGE_SIZE = 10
 
 function Dashboard() {
+  const { api, auth } = Route.useRouteContext()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
@@ -60,7 +57,7 @@ function Dashboard() {
     error,
   } = useQuery({
     queryKey: requestKeys.list,
-    queryFn: fetchRequests,
+    queryFn: api.fetchRequests,
     // Poll so webhook-driven status changes appear without a manual reload,
     // and refresh when the tab regains focus (the global default is off).
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
@@ -83,7 +80,7 @@ function Dashboard() {
   const prefetchRequest = (id: string) => {
     void queryClient.prefetchQuery({
       queryKey: requestKeys.detail(id),
-      queryFn: () => fetchRequest(id),
+      queryFn: () => api.fetchRequest(id),
     })
   }
 
@@ -139,9 +136,9 @@ function Dashboard() {
             size="icon"
             aria-label="Sign out"
             onClick={() => {
-              void authClient
-                .signOut()
-                .finally(() => navigate({ to: "/login" }))
+              void Promise.resolve(auth.signOut()).finally(() =>
+                navigate({ to: "/login" })
+              )
             }}
           >
             <RiLogoutBoxRLine aria-hidden />

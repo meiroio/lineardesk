@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { authClient } from "@/lib/auth-client"
 
 const loginReasonValues = [
   "forbidden",
@@ -45,6 +44,11 @@ type SignInMagicLink = (
   input: MagicLinkInput
 ) => Promise<MagicLinkResult | void>
 
+type SignInSocial = (input: {
+  provider: "google"
+  callbackURL: string
+}) => Promise<unknown> | unknown
+
 type MagicLinkRequestState = {
   requestId: number
   activeRequestId: number
@@ -55,6 +59,7 @@ type MagicLinkRequestState = {
 type LoginScreenProps = {
   reason?: LoginReason
   signInMagicLink?: SignInMagicLink
+  signInSocial?: SignInSocial
 }
 
 export function parseLoginReason(reason: unknown): LoginReason | undefined {
@@ -96,12 +101,28 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { reason } = Route.useSearch()
-  return <LoginScreen reason={reason} />
+  const { auth } = Route.useRouteContext()
+  return (
+    <LoginScreen
+      reason={reason}
+      signInMagicLink={auth.signIn.magicLink}
+      signInSocial={auth.signIn.social}
+    />
+  )
+}
+
+const missingSignInMagicLink: SignInMagicLink = async () => {
+  throw new Error("signInMagicLink dependency was not provided")
+}
+
+const missingSignInSocial: SignInSocial = () => {
+  throw new Error("signInSocial dependency was not provided")
 }
 
 export function LoginScreen({
   reason,
-  signInMagicLink = authClient.signIn.magicLink,
+  signInMagicLink = missingSignInMagicLink,
+  signInSocial = missingSignInSocial,
 }: LoginScreenProps) {
   const [email, setEmail] = useState("")
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
@@ -141,7 +162,7 @@ export function LoginScreen({
           ) : null}
           <Button
             onClick={() =>
-              void authClient.signIn.social({
+              void signInSocial({
                 provider: "google",
                 callbackURL: "/",
               })
