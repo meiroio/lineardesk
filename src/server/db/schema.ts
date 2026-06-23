@@ -1,4 +1,3 @@
-import { relations } from "drizzle-orm"
 import {
   boolean,
   index,
@@ -244,22 +243,3 @@ export const slackEvents = pgTable("slack_events", {
     .notNull()
     .defaultNow(),
 })
-
-export const authUsersRelations = relations(authUsers, ({ many }) => ({
-  sessions: many(authSessions),
-  accounts: many(authAccounts),
-}))
-
-export const authSessionsRelations = relations(authSessions, ({ one }) => ({
-  user: one(authUsers, {
-    fields: [authSessions.userId],
-    references: [authUsers.id],
-  }),
-}))
-
-export const authAccountsRelations = relations(authAccounts, ({ one }) => ({
-  user: one(authUsers, {
-    fields: [authAccounts.userId],
-    references: [authUsers.id],
-  }),
-}))

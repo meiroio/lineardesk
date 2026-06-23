@@ -128,9 +128,4 @@ export const SlackEventsResponseModel = t.Union([
 
 export type PortalRequest = typeof PortalRequestModel.static
 export type PortalRequestComment = typeof PortalRequestCommentModel.static
-export type PortalRequestListResponse =
-  typeof PortalRequestListResponseModel.static
-export type PortalRequestResponse = typeof PortalRequestResponseModel.static
-export type PortalRequestCommentResponse =
-  typeof PortalRequestCommentResponseModel.static
 export type UploadImageResponse = typeof UploadImageResponseModel.static

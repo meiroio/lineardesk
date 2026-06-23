@@ -20,11 +20,6 @@ export function pgPoolConfig(connectionString: string) {
   }
 }
 
-export function createDb(databaseUrl: string) {
-  const localPool = new Pool(pgPoolConfig(databaseUrl))
-  return drizzle(localPool, { schema })
-}
-
 export function getDb() {
   if (!db) {
     pool = new Pool(pgPoolConfig(readAppConfig().databaseUrl))
