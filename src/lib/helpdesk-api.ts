@@ -1,8 +1,14 @@
-import type { PortalRequest, UploadImageResponse } from "@/server/api/contracts"
+import type {
+  LinearTeamsResponse,
+  PortalRequest,
+  UploadImageResponse,
+} from "@/server/api/contracts"
 
 export type {
   PortalRequest,
   PortalRequestComment,
+  LinearTeam,
+  LinearTeamsResponse,
   UploadImageResponse,
 } from "@/server/api/contracts"
 
@@ -75,6 +81,14 @@ export async function updateRequest(
 export const requestKeys = {
   list: ["requests"] as const,
   detail: (id: string) => ["request", id] as const,
+}
+
+export const teamKeys = {
+  list: ["teams"] as const,
+}
+
+export async function fetchTeams(): Promise<LinearTeamsResponse> {
+  return apiGet<LinearTeamsResponse>("/api/teams")
 }
 
 export async function fetchRequests(): Promise<PortalRequest[]> {

@@ -16,6 +16,7 @@ import {
   CreateCommentBodyModel,
   CreateRequestBodyModel,
   ErrorResponseModel,
+  LinearTeamsResponseModel,
   PortalRequestListResponseModel,
   PortalRequestCommentResponseModel,
   PortalRequestResponseModel,
@@ -39,6 +40,32 @@ function parseResolution(body: unknown): CloseIssueResolution | null {
 export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
   return new Elysia({ name: "api.requests" })
     .use(apiDependencies)
+    .get(
+      "/teams",
+      async ({ request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+
+        return {
+          teams: await deps.linear.listTeams(),
+          defaultTeamId: deps.config.linear.teamId,
+        }
+      },
+      {
+        response: {
+          200: LinearTeamsResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
+      }
+    )
     .get(
       "/requests",
       async ({ request, resolveApiDependencies, status }) => {
@@ -95,10 +122,20 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           throw error
         }
 
+        const teamId = body.teamId?.trim() || deps.config.linear.teamId
+        const teams = await deps.linear.listTeams()
+        if (!teams.some((team) => team.id === teamId)) {
+          return status(400, {
+            error: "validation_error",
+            issues: ["Team is not available"],
+          })
+        }
+
         const { severity, ...issueInput } = input
         const linearIssue = await deps.linear.createHelpdeskIssue({
           ...issueInput,
           requesterEmail: session.user.email,
+          teamId,
           priority: severity,
         })
         const record = await deps.repo.createRequest({
@@ -108,7 +145,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           ...issueInput,
           severity,
           linearIssue,
-          linearTeamId: deps.config.linear.teamId,
+          linearTeamId: teamId,
           source: "web",
         })
 
@@ -252,6 +289,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
 
         const state = await deps.linear.closeIssue({
           issueId: record.linearIssueId,
+          teamId: record.linearTeamId,
           resolution,
         })
         await deps.repo.updateRequestFromLinear({

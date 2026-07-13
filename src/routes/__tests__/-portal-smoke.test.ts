@@ -65,6 +65,7 @@ describe("portal route smoke", () => {
       const input = body as {
         title: string
         severity: string
+        teamId: string
         expectedBehaviour: string
         currentBehaviour: string
         stepsToReproduce: string
@@ -82,7 +83,8 @@ describe("portal route smoke", () => {
           "Steps to reproduce",
           input.stepsToReproduce,
         ].join("\n"),
-        linearIdentifier: "BAS-102",
+        linearIdentifier: "PRD-102",
+        linearTeamId: input.teamId,
         severity: input.severity === "urgent" ? 1 : 2,
       })
       requests = [request, ...requests]
@@ -109,6 +111,13 @@ describe("portal route smoke", () => {
         fetchRequest: fetchRequest as AppRouterContext["api"]["fetchRequest"],
         fetchRequests:
           fetchRequests as AppRouterContext["api"]["fetchRequests"],
+        fetchTeams: vi.fn(async () => ({
+          teams: [
+            { id: "team-id", key: "BAS", name: "Base" },
+            { id: "team-product", key: "PRD", name: "Product" },
+          ],
+          defaultTeamId: "team-id",
+        })),
         updateRequest: vi.fn(),
         uploadImage: vi.fn(),
       },
@@ -136,6 +145,9 @@ describe("portal route smoke", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Smoke flow CSV export failure" },
     })
+    fireEvent.change(screen.getByLabelText("Team"), {
+      target: { value: "team-product" },
+    })
     fireEvent.click(screen.getByLabelText("High"))
     fireEvent.change(screen.getByLabelText("Expected behaviour"), {
       target: { value: "The CSV export downloads." },
@@ -152,6 +164,7 @@ describe("portal route smoke", () => {
       expect(apiPost).toHaveBeenCalledWith("/api/requests", {
         title: "Smoke flow CSV export failure",
         severity: "high",
+        teamId: "team-product",
         expectedBehaviour: "The CSV export downloads.",
         currentBehaviour: "The export returns a 500.",
         stepsToReproduce: "Open Reports and click Export CSV.",
@@ -162,7 +175,7 @@ describe("portal route smoke", () => {
         name: "Smoke flow CSV export failure",
       })
     ).toBeTruthy()
-    expect(screen.getAllByText("BAS-102")).toHaveLength(2)
+    expect(screen.getAllByText("PRD-102")).toHaveLength(2)
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()
     expect(requirePortalAuth).toHaveBeenCalled()
   })

@@ -233,6 +233,10 @@ export function makeBusinessWorld() {
   }
 
   const linear: LinearGateway = {
+    listTeams: async () => [
+      { id: "team-id", key: "BAS", name: "Base" },
+      { id: "team-product", key: "PRD", name: "Product" },
+    ],
     createHelpdeskIssue: async (input): Promise<LinearIssueSnapshot> => {
       linearCreateInputs.push(input)
       const sequence = ++issueSequence

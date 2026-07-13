@@ -104,10 +104,17 @@ export type LinearIssueSnapshot = {
   state: LinearIssueStateSnapshot
 }
 
+export type LinearTeamSnapshot = {
+  id: string
+  key: string
+  name: string
+}
+
 export type CreateHelpdeskIssueInput = {
   title: string
   description: string
   requesterEmail: string
+  teamId: string
   priority?: number
 }
 
@@ -125,10 +132,12 @@ export type CloseIssueResolution = "resolved" | "canceled"
 
 export type CloseIssueInput = {
   issueId: string
+  teamId: string
   resolution: CloseIssueResolution
 }
 
 export type LinearGateway = {
+  listTeams: () => Promise<LinearTeamSnapshot[]>
   createHelpdeskIssue: (
     input: CreateHelpdeskIssueInput
   ) => Promise<LinearIssueSnapshot>

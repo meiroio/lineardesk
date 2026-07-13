@@ -104,6 +104,7 @@ export async function createSlackTicket(
     title: input.title,
     description,
     requesterEmail: email,
+    teamId: deps.config.linear.teamId,
     priority: input.severity,
   })
 

@@ -64,9 +64,21 @@ export const PortalRequestCommentResponseModel = t.Object({
   comment: PortalRequestCommentModel,
 })
 
+export const LinearTeamModel = t.Object({
+  id: t.String(),
+  key: t.String(),
+  name: t.String(),
+})
+
+export const LinearTeamsResponseModel = t.Object({
+  teams: t.Array(LinearTeamModel),
+  defaultTeamId: t.String(),
+})
+
 export const CreateRequestBodyModel = t.Object({
   title: t.String(),
   severity: t.String(),
+  teamId: t.Optional(t.String()),
   expectedBehaviour: t.String(),
   currentBehaviour: t.String(),
   stepsToReproduce: t.String(),
@@ -128,4 +140,6 @@ export const SlackEventsResponseModel = t.Union([
 
 export type PortalRequest = typeof PortalRequestModel.static
 export type PortalRequestComment = typeof PortalRequestCommentModel.static
+export type LinearTeam = typeof LinearTeamModel.static
+export type LinearTeamsResponse = typeof LinearTeamsResponseModel.static
 export type UploadImageResponse = typeof UploadImageResponseModel.static

@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { PageShell } from "@/components/page-shell"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest } from "@/lib/helpdesk-api"
-import { ApiError, requestKeys } from "@/lib/helpdesk-api"
+import { ApiError, requestKeys, teamKeys } from "@/lib/helpdesk-api"
 import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 import { cn } from "@/lib/utils"
 
@@ -30,6 +30,7 @@ function NewRequest() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [title, setTitle] = useState("")
+  const [teamId, setTeamId] = useState("")
   const [severity, setSeverity] = useState("medium")
   const [expectedBehaviour, setExpectedBehaviour] = useState("")
   const [currentBehaviour, setCurrentBehaviour] = useState("")
@@ -37,6 +38,22 @@ function NewRequest() {
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const {
+    data: teamData,
+    status: teamStatus,
+    error: teamError,
+  } = useQuery({
+    queryKey: teamKeys.list,
+    queryFn: api.fetchTeams,
+  })
+  const teams = teamData?.teams ?? []
+  const defaultTeamId = teamData?.defaultTeamId ?? ""
+  const selectedTeamId = teams.some((team) => team.id === teamId)
+    ? teamId
+    : teams.some((team) => team.id === defaultTeamId)
+      ? defaultTeamId
+      : (teams[0]?.id ?? "")
 
   const expectedPaste = usePasteImageUpload(
     api.uploadImage,
@@ -60,7 +77,7 @@ function NewRequest() {
     <PageShell
       backLabel="Requests"
       title="New request"
-      description="Submitting this form creates a Linear issue in the Base team."
+      description="Submitting this form creates a Linear issue in the selected team."
       width="narrow"
     >
       <Card>
@@ -76,6 +93,7 @@ function NewRequest() {
                 .apiPost<{ request: PortalRequest }>("/api/requests", {
                   title,
                   severity,
+                  teamId: selectedTeamId,
                   expectedBehaviour,
                   currentBehaviour,
                   stepsToReproduce,
@@ -117,6 +135,36 @@ function NewRequest() {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="request-team">Team</Label>
+              <select
+                id="request-team"
+                name="teamId"
+                required
+                disabled={teamStatus !== "success"}
+                value={selectedTeamId}
+                onChange={(event) => setTeamId(event.target.value)}
+                className="h-9 w-full rounded-4xl border border-input bg-input/30 px-3 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+              >
+                {teamStatus === "pending" ? (
+                  <option value="">Loading teams…</option>
+                ) : teams.length === 0 ? (
+                  <option value="">No teams available</option>
+                ) : (
+                  teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name} ({team.key})
+                    </option>
+                  ))
+                )}
+              </select>
+              {teamError ? (
+                <p className="text-sm text-destructive">
+                  Teams could not be loaded.
+                </p>
+              ) : null}
             </div>
 
             <fieldset className="grid gap-2">
@@ -189,7 +237,10 @@ function NewRequest() {
               <Link to="/" className={buttonVariants({ variant: "outline" })}>
                 Cancel
               </Link>
-              <Button type="submit" disabled={submitting || uploadsPending > 0}>
+              <Button
+                type="submit"
+                disabled={submitting || uploadsPending > 0 || !selectedTeamId}
+              >
                 {submitting ? "Submitting..." : "Submit request"}
               </Button>
             </div>

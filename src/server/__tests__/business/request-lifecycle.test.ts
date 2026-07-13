@@ -24,6 +24,7 @@ describe("customer request business flows", () => {
       {
         title: " Export CSV fails ",
         severity: "high",
+        teamId: "team-product",
         expectedBehaviour: " The CSV file downloads. ",
         currentBehaviour: " The export returns a 500. ",
         stepsToReproduce: " Open Reports, then click Export CSV. ",
@@ -39,6 +40,7 @@ describe("customer request business flows", () => {
       expect.objectContaining({
         title: "Export CSV fails",
         requesterEmail: "ada@example.com",
+        teamId: "team-product",
         priority: 2,
       }),
     ])
@@ -52,6 +54,7 @@ describe("customer request business flows", () => {
           requesterEmail: "ada@example.com",
           organizationId: "org-acme",
           title: "Export CSV fails",
+          linearTeamId: "team-product",
           severity: 2,
           linearStateType: "triage",
           source: "web",

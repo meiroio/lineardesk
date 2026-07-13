@@ -54,6 +54,7 @@ function makeRepo(open: RequestRecord[]): HelpdeskRepository {
 
 function makeLinear(states: IssueStateSnapshot[]): LinearGateway {
   return {
+    listTeams: vi.fn(async () => []),
     createHelpdeskIssue: vi.fn(),
     createIssueComment: vi.fn(),
     listIssueComments: vi.fn(async () => []),

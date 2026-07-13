@@ -87,6 +87,7 @@ function makeRepo(): HelpdeskRepository {
 
 function makeLinear(): LinearGateway {
   return {
+    listTeams: vi.fn(async () => [{ id: "team-id", key: "BAS", name: "Base" }]),
     createHelpdeskIssue: vi.fn(),
     createIssueComment: vi.fn(),
     listIssueComments: vi.fn(async () => []),
@@ -138,6 +139,12 @@ describe("createApiApp", () => {
     }
 
     expect(responseStatuses("GET", "/api/requests")).toEqual([
+      "200",
+      "401",
+      "403",
+      "409",
+    ])
+    expect(responseStatuses("GET", "/api/teams")).toEqual([
       "200",
       "401",
       "403",
@@ -293,6 +300,7 @@ describe("createApiApp", () => {
         "Current behaviour\nGoogle sign-in fails after redirect.\n\n" +
         "Steps to reproduce\n1. Click sign in 2. Pick account",
       requesterEmail: "person@example.com",
+      teamId: "team-id",
       priority: 2,
     })
     expect(repo.createRequest).toHaveBeenCalledWith(
@@ -568,6 +576,7 @@ describe("createApiApp", () => {
     expect(response.status).toBe(200)
     expect(linear.closeIssue).toHaveBeenCalledWith({
       issueId: "linear-issue-id",
+      teamId: "team-id",
       resolution: "canceled",
     })
     expect(repo.updateRequestFromLinear).toHaveBeenCalled()

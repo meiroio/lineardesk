@@ -98,6 +98,102 @@ describe("uploadAsset", () => {
   })
 })
 
+describe("teams and issue creation", () => {
+  it("lists active teams in display-name order", async () => {
+    const teams = vi.fn(async () => ({
+      nodes: [
+        {
+          id: "team-product",
+          key: "PRD",
+          displayName: "Product",
+          retiredAt: null,
+        },
+        {
+          id: "team-archived",
+          key: "OLD",
+          displayName: "Archived",
+          retiredAt: new Date(),
+        },
+        {
+          id: "team-base",
+          key: "BAS",
+          displayName: "Base",
+          retiredAt: null,
+        },
+      ],
+    }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { teams } as unknown as LinearClient
+    })
+
+    await expect(createLinearGateway(config).listTeams()).resolves.toEqual([
+      { id: "team-base", key: "BAS", name: "Base" },
+      { id: "team-product", key: "PRD", name: "Product" },
+    ])
+  })
+
+  it("creates the issue with the selected team's state and label", async () => {
+    const workflowStates = vi.fn(async () => ({
+      nodes: [
+        {
+          id: "base-triage",
+          name: "Triage",
+          type: "triage",
+          teamId: "team-id",
+        },
+        {
+          id: "product-triage",
+          name: "Triage",
+          type: "triage",
+          teamId: "team-product",
+        },
+      ],
+    }))
+    const issueLabels = vi.fn(async () => ({
+      nodes: [
+        { id: "base-bug", name: "Bug", teamId: "team-id" },
+        { id: "product-bug", name: "Bug", teamId: "team-product" },
+      ],
+    }))
+    const createIssue = vi.fn(async () => ({
+      success: true,
+      issue: {
+        id: "issue-product",
+        identifier: "PRD-123",
+        url: "https://linear.app/acme/issue/PRD-123",
+        state: {
+          id: "product-triage",
+          name: "Triage",
+          type: "triage",
+        },
+      },
+    }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return {
+        workflowStates,
+        issueLabels,
+        createIssue,
+      } as unknown as LinearClient
+    })
+
+    const issue = await createLinearGateway(config).createHelpdeskIssue({
+      title: "Product bug",
+      description: "It broke",
+      requesterEmail: "person@example.com",
+      teamId: "team-product",
+    })
+
+    expect(createIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: "team-product",
+        stateId: "product-triage",
+        labelIds: ["product-bug"],
+      })
+    )
+    expect(issue.identifier).toBe("PRD-123")
+  })
+})
+
 describe("closeIssue", () => {
   const states = {
     nodes: [
@@ -121,6 +217,7 @@ describe("closeIssue", () => {
     const gateway = createLinearGateway(config)
     const result = await gateway.closeIssue({
       issueId: "issue-1",
+      teamId: "team-id",
       resolution: "resolved",
     })
 
@@ -144,6 +241,7 @@ describe("closeIssue", () => {
     const gateway = createLinearGateway(config)
     const result = await gateway.closeIssue({
       issueId: "issue-1",
+      teamId: "team-id",
       resolution: "canceled",
     })
 
@@ -162,7 +260,11 @@ describe("closeIssue", () => {
 
     const gateway = createLinearGateway(config)
     await expect(
-      gateway.closeIssue({ issueId: "issue-1", resolution: "resolved" })
+      gateway.closeIssue({
+        issueId: "issue-1",
+        teamId: "team-id",
+        resolution: "resolved",
+      })
     ).rejects.toThrow('Linear workflow state of type "completed"')
     expect(updateIssue).not.toHaveBeenCalled()
   })

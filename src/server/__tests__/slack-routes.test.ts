@@ -78,6 +78,7 @@ function makeRepo(): HelpdeskRepository {
 
 function makeLinear(): LinearGateway {
   return {
+    listTeams: vi.fn(async () => []),
     createHelpdeskIssue: vi.fn(),
     closeIssue: vi.fn(),
     createIssueComment: vi.fn(),

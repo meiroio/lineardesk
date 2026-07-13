@@ -6,11 +6,13 @@ import {
   closeRequest,
   fetchRequest,
   fetchRequests,
+  fetchTeams,
   updateRequest,
   uploadImage,
 } from "@/lib/helpdesk-api"
 import type {
   PortalRequest,
+  LinearTeamsResponse,
   RequestResolution,
   UploadImageResponse,
 } from "@/lib/helpdesk-api"
@@ -39,6 +41,7 @@ export type HelpdeskApiClient = {
   ) => Promise<{ request: PortalRequest }>
   fetchRequest: (id: string) => Promise<PortalRequest>
   fetchRequests: () => Promise<PortalRequest[]>
+  fetchTeams: () => Promise<LinearTeamsResponse>
   updateRequest: (
     id: string,
     input: { title: string; description: string; severity: string }
@@ -66,6 +69,7 @@ const defaultApi: HelpdeskApiClient = {
   closeRequest,
   fetchRequest,
   fetchRequests,
+  fetchTeams,
   updateRequest,
   uploadImage,
 }

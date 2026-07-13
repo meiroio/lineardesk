@@ -47,7 +47,7 @@ Email settings:
 
 Linear defaults:
 
-- `LINEAR_TEAM_ID=87e7afa0-8d4c-4c43-86a5-090799f403b9`
+- `LINEAR_TEAM_ID=87e7afa0-8d4c-4c43-86a5-090799f403b9` — default team in the web picker and the team used for Slack-created tickets. The web portal also lists the other active teams available to the API key.
 - `LINEAR_TEAM_KEY=BAS`
 - `LINEAR_INITIAL_STATE_NAME=Triage`
 - `LINEAR_LABEL_NAME=Bug`

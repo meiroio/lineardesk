@@ -25,6 +25,7 @@ organization's portal list.
 2. Click **New request**.
 3. Fill in the form:
    - **Title** — a short summary (e.g. "CSV export returns a 500").
+   - **Team** — the Linear team that should receive the issue.
    - **Severity** — Urgent / High / Medium / Low (see the guide below).
    - **Expected behaviour** — what should happen.
    - **Current behaviour** — what actually happens.

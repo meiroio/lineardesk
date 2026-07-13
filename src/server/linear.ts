@@ -10,6 +10,7 @@ import type {
   LinearIssueCommentSnapshot,
   LinearIssueSnapshot,
   LinearIssueStateSnapshot,
+  LinearTeamSnapshot,
   UploadAssetInput,
   UploadAssetResult,
 } from "./types"
@@ -140,18 +141,33 @@ class LinearSdkGateway implements LinearGateway {
     private readonly config: LinearGatewayConfig
   ) {}
 
+  async listTeams(): Promise<LinearTeamSnapshot[]> {
+    const teams = await this.client.teams({
+      first: 250,
+      includeArchived: false,
+    })
+
+    return teams.nodes
+      .filter((team) => !team.retiredAt)
+      .map((team) => ({
+        id: team.id,
+        key: team.key,
+        name: team.displayName,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }
+
   async createHelpdeskIssue(
     input: CreateHelpdeskIssueInput
   ): Promise<LinearIssueSnapshot> {
     const [state, label] = await Promise.all([
-      this.findInitialState(),
-      this.findIssueLabel(),
+      this.findInitialState(input.teamId),
+      this.findIssueLabel(input.teamId),
     ])
 
     const payload = await this.client.createIssue(
       buildLinearIssueInput({
         ...input,
-        teamId: this.config.teamId,
         stateId: state.id,
         labelId: label.id,
       })
@@ -264,7 +280,8 @@ class LinearSdkGateway implements LinearGateway {
 
   async closeIssue(input: CloseIssueInput): Promise<LinearIssueStateSnapshot> {
     const state = await this.findWorkflowStateByType(
-      input.resolution === "resolved" ? "completed" : "canceled"
+      input.resolution === "resolved" ? "completed" : "canceled",
+      input.teamId
     )
 
     const payload = await this.client.updateIssue(input.issueId, {
@@ -341,7 +358,7 @@ class LinearSdkGateway implements LinearGateway {
     }
   }
 
-  private async findInitialState() {
+  private async findInitialState(teamId: string) {
     const states = await this.client.workflowStates({
       first: 100,
       includeArchived: false,
@@ -349,48 +366,40 @@ class LinearSdkGateway implements LinearGateway {
     const state = selectWorkflowStateByName(
       states.nodes,
       this.config.initialStateName,
-      this.config.teamId
+      teamId
     )
 
     if (!state) {
       throw new Error(
-        `Linear workflow state "${this.config.initialStateName}" was not found for team ${this.config.teamId}`
+        `Linear workflow state "${this.config.initialStateName}" was not found for team ${teamId}`
       )
     }
 
     return state
   }
 
-  private async findWorkflowStateByType(type: string) {
+  private async findWorkflowStateByType(type: string, teamId: string) {
     const states = await this.client.workflowStates({
       first: 100,
       includeArchived: false,
     })
-    const state = selectWorkflowStateByType(
-      states.nodes,
-      type,
-      this.config.teamId
-    )
+    const state = selectWorkflowStateByType(states.nodes, type, teamId)
 
     if (!state) {
       throw new Error(
-        `Linear workflow state of type "${type}" was not found for team ${this.config.teamId}`
+        `Linear workflow state of type "${type}" was not found for team ${teamId}`
       )
     }
 
     return state
   }
 
-  private async findIssueLabel() {
+  private async findIssueLabel(teamId: string) {
     const labels = await this.client.issueLabels({
       first: 100,
       includeArchived: false,
     })
 
-    return requireIssueLabelByName(
-      labels.nodes,
-      this.config.labelName,
-      this.config.teamId
-    )
+    return requireIssueLabelByName(labels.nodes, this.config.labelName, teamId)
   }
 }
