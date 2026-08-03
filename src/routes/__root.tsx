@@ -20,6 +20,7 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
         content: "width=device-width, initial-scale=1",
       },
       {
+        // Keep the browser title concise.
         title: "LinearDesk",
       },
     ],
