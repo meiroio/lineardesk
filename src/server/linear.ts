@@ -278,6 +278,16 @@ class LinearSdkGateway implements LinearGateway {
     if (!payload.success) throw new Error("Linear issue update failed")
   }
 
+  async updateIssuePriority(input: {
+    issueId: string
+    priority: number
+  }): Promise<void> {
+    const payload = await this.client.updateIssue(input.issueId, {
+      priority: input.priority,
+    })
+    if (!payload.success) throw new Error("Linear issue update failed")
+  }
+
   async closeIssue(input: CloseIssueInput): Promise<LinearIssueStateSnapshot> {
     const state = await this.findWorkflowStateByType(
       input.resolution === "resolved" ? "completed" : "canceled",

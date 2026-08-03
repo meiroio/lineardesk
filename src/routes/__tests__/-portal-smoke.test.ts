@@ -35,6 +35,7 @@ describe("portal route smoke", () => {
   let fetchRequest: ReturnType<typeof vi.fn>
   let fetchRequests: ReturnType<typeof vi.fn>
   let requirePortalAuth: ReturnType<typeof vi.fn>
+  let updateRequestSeverity: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     Object.defineProperty(window, "scrollTo", {
@@ -91,6 +92,14 @@ describe("portal route smoke", () => {
 
       return { request }
     })
+    updateRequestSeverity = vi.fn(async (id: string, severity: number) => {
+      const request = requests.find((item) => item.id === id)
+      if (!request) throw new Error("not_found")
+
+      const updated = { ...request, severity }
+      requests = requests.map((item) => (item.id === id ? updated : item))
+      return { request: updated }
+    })
   })
 
   afterEach(() => {
@@ -119,6 +128,8 @@ describe("portal route smoke", () => {
           defaultTeamId: "team-id",
         })),
         updateRequest: vi.fn(),
+        updateRequestSeverity:
+          updateRequestSeverity as AppRouterContext["api"]["updateRequestSeverity"],
         uploadImage: vi.fn(),
       },
       auth: {
@@ -177,6 +188,17 @@ describe("portal route smoke", () => {
     ).toBeTruthy()
     expect(screen.getAllByText("PRD-102")).toHaveLength(2)
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()
+    const severity = screen.getByRole("combobox", {
+      name: "Severity: High",
+    })
+    fireEvent.click(severity)
+    const low = await screen.findByRole("option", { name: "Low" })
+    fireEvent.pointerDown(low, { button: 0, pointerType: "mouse" })
+    fireEvent.click(low)
+    await waitFor(() => {
+      expect(updateRequestSeverity).toHaveBeenCalledWith("request-2", 4)
+    })
+    expect(screen.getByRole("combobox", { name: "Severity: Low" })).toBeTruthy()
     expect(requirePortalAuth).toHaveBeenCalled()
   })
 })

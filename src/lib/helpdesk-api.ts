@@ -78,6 +78,15 @@ export async function updateRequest(
   )
 }
 
+export async function updateRequestSeverity(
+  id: string,
+  severity: number
+): Promise<{ request: PortalRequest }> {
+  return apiPost<{ request: PortalRequest }>(`/api/requests/${id}/severity`, {
+    severity,
+  })
+}
+
 export const requestKeys = {
   list: ["requests"] as const,
   detail: (id: string) => ["request", id] as const,

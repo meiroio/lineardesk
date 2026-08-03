@@ -154,6 +154,10 @@ export type LinearGateway = {
     description: string
     priority: number
   }) => Promise<void>
+  updateIssuePriority: (input: {
+    issueId: string
+    priority: number
+  }) => Promise<void>
 }
 
 export type CreateIssueCommentInput = {
@@ -270,6 +274,10 @@ export type HelpdeskRepository = {
     id: string
     title: string
     description: string
+    severity: number
+  }) => Promise<RequestRecord | null>
+  updateRequestSeverity: (input: {
+    id: string
     severity: number
   }) => Promise<RequestRecord | null>
 }

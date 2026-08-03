@@ -8,6 +8,7 @@ import {
   parseCreateCommentInput,
   parseCreateRequestInput,
   parseUpdateRequestInput,
+  parseUpdateSeverityInput,
   RequestValidationError,
 } from "../request-validation"
 import type { CloseIssueResolution } from "../types"
@@ -22,6 +23,7 @@ import {
   PortalRequestResponseModel,
   RequestParamsModel,
   UpdateRequestBodyModel,
+  UpdateRequestSeverityBodyModel,
   ValidationErrorResponseModel,
 } from "./contracts"
 import type { ApiDependenciesPlugin } from "./dependencies"
@@ -309,6 +311,62 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       },
       {
         body: CloseRequestBodyModel,
+        params: RequestParamsModel,
+        response: {
+          200: PortalRequestResponseModel,
+          400: ValidationErrorResponseModel,
+          401: ErrorResponseModel,
+          403: ErrorResponseModel,
+          404: ErrorResponseModel,
+          409: ErrorResponseModel,
+        },
+      }
+    )
+    .post(
+      "/requests/:id/severity",
+      async ({ params, body, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+        const { session } = authorization
+
+        let input: ReturnType<typeof parseUpdateSeverityInput>
+        try {
+          input = parseUpdateSeverityInput(body)
+        } catch (error) {
+          if (error instanceof RequestValidationError) {
+            return status(400, {
+              error: "validation_error",
+              issues: error.issues,
+              fields: error.fields,
+            })
+          }
+          throw error
+        }
+
+        const record = await deps.repo.getRequestForOrganization(
+          params.id,
+          session.organizationId
+        )
+        if (!record) return status(404, { error: "not_found" })
+
+        await deps.linear.updateIssuePriority({
+          issueId: record.linearIssueId,
+          priority: input.severity,
+        })
+        const updated = await deps.repo.updateRequestSeverity({
+          id: record.id,
+          severity: input.severity,
+        })
+        return { request: serializeRequest(updated ?? record) }
+      },
+      {
+        body: UpdateRequestSeverityBodyModel,
         params: RequestParamsModel,
         response: {
           200: PortalRequestResponseModel,

@@ -21,6 +21,7 @@
     "org:seed": "bun run scripts/seed-customer-org.ts"
   },
   "dependencies": {
+    "@base-ui/react": "^1.5.0",
     "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/inter": "^5.2.8",
     "@linear/sdk": "^86.0.0",

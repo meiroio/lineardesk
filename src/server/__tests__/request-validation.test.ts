@@ -4,6 +4,7 @@ import {
   parseCreateCommentInput,
   parseCreateRequestInput,
   parseUpdateRequestInput,
+  parseUpdateSeverityInput,
   RequestValidationError,
 } from "../request-validation"
 
@@ -95,6 +96,21 @@ describe("parseUpdateRequestInput", () => {
         ["description", "severity", "title"].sort()
       )
     }
+  })
+})
+
+describe("parseUpdateSeverityInput", () => {
+  it("accepts only Linear priority integers", () => {
+    expect(parseUpdateSeverityInput({ severity: 1 })).toEqual({ severity: 1 })
+    expect(() => parseUpdateSeverityInput({ severity: 0 })).toThrow(
+      RequestValidationError
+    )
+    expect(() => parseUpdateSeverityInput({ severity: 2.5 })).toThrow(
+      RequestValidationError
+    )
+    expect(() => parseUpdateSeverityInput({ severity: "high" })).toThrow(
+      RequestValidationError
+    )
   })
 })
 

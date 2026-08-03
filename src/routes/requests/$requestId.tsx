@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 
 import { DescriptionBody } from "@/components/description-body"
 import { PageShell } from "@/components/page-shell"
-import { SeverityBadge } from "@/components/severity-badge"
+import { SeveritySelect } from "@/components/severity-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -54,7 +54,8 @@ function RequestDetail() {
   const [editError, setEditError] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editSeverity, setEditSeverity] = useState("medium")
+  const [severityBusy, setSeverityBusy] = useState(false)
+  const [severityError, setSeverityError] = useState<string | null>(null)
 
   // The record (title, description, severity, dates, status) already arrived
   // with the list, so seed it as placeholder data: the page renders instantly
@@ -151,9 +152,46 @@ function RequestDetail() {
     if (!request) return
     setEditTitle(request.title)
     setEditDescription(request.description)
-    setEditSeverity(severityLabelOf(request.severity))
     setEditError(null)
     setEditing(true)
+  }
+
+  async function handleSeverityChange(severity: number) {
+    if (!request || severityBusy || severity === request.severity) return
+
+    const previousSeverity = request.severity
+    setSeverityBusy(true)
+    setSeverityError(null)
+    queryClient.setQueryData<PortalRequest>(
+      requestKeys.detail(requestId),
+      (old) => (old ? { ...old, severity } : old)
+    )
+
+    try {
+      const data = await api.updateRequestSeverity(requestId, severity)
+      queryClient.setQueryData<PortalRequest>(
+        requestKeys.detail(requestId),
+        (old) =>
+          old
+            ? { ...old, ...data.request, comments: old.comments }
+            : data.request
+      )
+      void queryClient.invalidateQueries({ queryKey: requestKeys.list })
+    } catch (err) {
+      queryClient.setQueryData<PortalRequest>(
+        requestKeys.detail(requestId),
+        (old) => (old ? { ...old, severity: previousSeverity } : old)
+      )
+
+      if (err instanceof ApiError && err.status === 401) {
+        void navigate({ to: "/login" })
+        return
+      }
+
+      setSeverityError("Could not update severity. Try again.")
+    } finally {
+      setSeverityBusy(false)
+    }
   }
 
   async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
@@ -165,7 +203,7 @@ function RequestDetail() {
       const data = await api.updateRequest(requestId, {
         title: editTitle,
         description: editDescription,
-        severity: editSeverity,
+        severity: severityLabelOf(request?.severity ?? null),
       })
       queryClient.setQueryData<PortalRequest>(
         requestKeys.detail(requestId),
@@ -242,7 +280,24 @@ function RequestDetail() {
       }
       actions={
         <>
-          <SeverityBadge priority={request.severity} />
+          <div className="flex flex-col items-end gap-1">
+            <SeveritySelect
+              priority={request.severity}
+              onValueChange={(severity) => void handleSeverityChange(severity)}
+              disabled={severityBusy}
+              invalid={Boolean(severityError)}
+              describedBy={severityError ? "severity-update-error" : undefined}
+            />
+            {severityError ? (
+              <p
+                id="severity-update-error"
+                role="alert"
+                className="max-w-48 text-right text-xs text-destructive"
+              >
+                {severityError}
+              </p>
+            ) : null}
+          </div>
           <Badge
             variant="outline"
             className={statusClassName(request.linearStateType)}
@@ -298,21 +353,6 @@ function RequestDetail() {
                         setEditDescription(event.target.value)
                       }
                     />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-severity">Severity</Label>
-                    <select
-                      id="edit-severity"
-                      value={editSeverity}
-                      onChange={(event) => setEditSeverity(event.target.value)}
-                      className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      <option value="urgent">Urgent</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
                   </div>
 
                   {editError ? (

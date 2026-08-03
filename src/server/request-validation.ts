@@ -136,6 +136,26 @@ export function parseUpdateRequestInput(input: unknown): CreateRequestInput {
   return { title, description, severity }
 }
 
+export function parseUpdateSeverityInput(input: unknown): {
+  severity: number
+} {
+  const value = input && typeof input === "object" ? input : {}
+  const raw = (value as Record<string, unknown>).severity
+  const severity = typeof raw === "number" ? raw : undefined
+
+  if (
+    !Number.isInteger(severity) ||
+    severity == null ||
+    severity < 1 ||
+    severity > 4
+  ) {
+    const message = "Severity must be an integer from 1 to 4"
+    throw new RequestValidationError([message], { severity: message })
+  }
+
+  return { severity }
+}
+
 export function parseCreateCommentInput(input: unknown): CreateCommentInput {
   const issues: string[] = []
   const value = input && typeof input === "object" ? input : {}

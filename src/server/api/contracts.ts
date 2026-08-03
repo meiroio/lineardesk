@@ -90,6 +90,10 @@ export const UpdateRequestBodyModel = t.Object({
   severity: t.String(),
 })
 
+export const UpdateRequestSeverityBodyModel = t.Object({
+  severity: t.Number(),
+})
+
 export const CreateCommentBodyModel = t.Object({
   body: t.String(),
 })

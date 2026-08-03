@@ -170,6 +170,19 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return row ? toRequestRecord(row) : null
   }
 
+  async updateRequestSeverity(input: {
+    id: string
+    severity: number
+  }): Promise<RequestRecord | null> {
+    const rows = await this.db
+      .update(helpdeskRequests)
+      .set({ severity: input.severity, updatedAt: new Date() })
+      .where(eq(helpdeskRequests.id, input.id))
+      .returning()
+    const row = rows[0] as HelpdeskRequestRow | undefined
+    return row ? toRequestRecord(row) : null
+  }
+
   async updateRequestFromLinear(
     snapshot: LinearIssueWebhookSnapshot
   ): Promise<void> {

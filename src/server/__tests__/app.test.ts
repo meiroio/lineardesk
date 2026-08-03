@@ -82,6 +82,9 @@ function makeRepo(): HelpdeskRepository {
     recordSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
     updateRequestFields: vi.fn(async () => makeRecord()),
+    updateRequestSeverity: vi.fn(async ({ severity }) =>
+      makeRecord({ severity })
+    ),
   }
 }
 
@@ -95,6 +98,7 @@ function makeLinear(): LinearGateway {
     uploadAsset: vi.fn(),
     closeIssue: vi.fn(),
     updateIssueFields: vi.fn(),
+    updateIssuePriority: vi.fn(),
   }
 }
 
@@ -173,6 +177,14 @@ describe("createApiApp", () => {
       "409",
     ])
     expect(responseStatuses("POST", "/api/requests/:id/close")).toEqual([
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+    ])
+    expect(responseStatuses("POST", "/api/requests/:id/severity")).toEqual([
       "200",
       "400",
       "401",
@@ -668,6 +680,41 @@ describe("createApiApp", () => {
       "request-id",
       "org-1"
     )
+  })
+
+  it("atomically updates severity on open or closed requests", async () => {
+    const repo = makeRepo()
+    repo.getRequestForOrganization = vi.fn(async () =>
+      makeRecord({ linearStateType: "completed" })
+    )
+    const linear = makeLinear()
+    const app = createApiApp({
+      config,
+      repo,
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/severity", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ severity: 1 }),
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(linear.updateIssuePriority).toHaveBeenCalledWith({
+      issueId: "linear-issue-id",
+      priority: 1,
+    })
+    expect(repo.updateRequestSeverity).toHaveBeenCalledWith({
+      id: "request-id",
+      severity: 1,
+    })
+    expect(linear.updateIssueFields).not.toHaveBeenCalled()
+    expect(repo.updateRequestFields).not.toHaveBeenCalled()
   })
 
   it("rejects editing a closed ticket with 409", async () => {

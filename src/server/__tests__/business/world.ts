@@ -230,6 +230,18 @@ export function makeBusinessWorld() {
       requests.set(updated.id, updated)
       return updated
     },
+    updateRequestSeverity: async (input) => {
+      const record = requests.get(input.id)
+      if (!record) return null
+
+      const updated: RequestRecord = {
+        ...record,
+        severity: input.severity,
+        updatedAt: now(),
+      }
+      requests.set(updated.id, updated)
+      return updated
+    },
   }
 
   const linear: LinearGateway = {
@@ -307,6 +319,12 @@ export function makeBusinessWorld() {
         description: input.description,
         priority: input.priority,
       })
+    },
+    updateIssuePriority: async (input) => {
+      const issue = issues.get(input.issueId)
+      if (!issue) throw new Error(`Unknown issue ${input.issueId}`)
+
+      issues.set(issue.id, { ...issue, priority: input.priority })
     },
   }
 

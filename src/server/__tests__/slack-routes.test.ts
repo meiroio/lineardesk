@@ -73,6 +73,7 @@ function makeRepo(): HelpdeskRepository {
     recordSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
     updateRequestFields: vi.fn(async () => makeRecord()),
+    updateRequestSeverity: vi.fn(async () => makeRecord()),
   }
 }
 
@@ -86,6 +87,7 @@ function makeLinear(): LinearGateway {
     uploadAsset: vi.fn(),
     listIssueStates: vi.fn(async () => []),
     updateIssueFields: vi.fn(),
+    updateIssuePriority: vi.fn(),
   }
 }
 

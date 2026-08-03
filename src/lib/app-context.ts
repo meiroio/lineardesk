@@ -8,6 +8,7 @@ import {
   fetchRequests,
   fetchTeams,
   updateRequest,
+  updateRequestSeverity,
   uploadImage,
 } from "@/lib/helpdesk-api"
 import type {
@@ -46,6 +47,10 @@ export type HelpdeskApiClient = {
     id: string,
     input: { title: string; description: string; severity: string }
   ) => Promise<{ request: PortalRequest }>
+  updateRequestSeverity: (
+    id: string,
+    severity: number
+  ) => Promise<{ request: PortalRequest }>
   uploadImage: (file: File) => Promise<UploadImageResponse>
 }
 
@@ -71,6 +76,7 @@ const defaultApi: HelpdeskApiClient = {
   fetchRequests,
   fetchTeams,
   updateRequest,
+  updateRequestSeverity,
   uploadImage,
 }
 
