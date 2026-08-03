@@ -8,7 +8,8 @@ vi.mock("@linear/sdk", () => ({
 }))
 
 const config = {
-  apiKey: "lin_key",
+  clientId: "linear-client",
+  clientSecret: "linear-secret",
   teamId: "team-id",
   teamKey: "BAS",
   initialStateName: "Triage",
@@ -16,11 +17,29 @@ const config = {
   webhookSecret: "secret",
 }
 
+const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
 const fileUpload = vi.fn()
 const originalFetch = global.fetch
 
+function createTokenResponse() {
+  return Response.json({
+    access_token: "linear-app-token",
+    token_type: "Bearer",
+    expires_in: 2_591_999,
+    scope: "read write",
+  })
+}
+
+function isTokenRequest(input: RequestInfo | URL) {
+  return String(input) === LINEAR_OAUTH_TOKEN_URL
+}
+
 beforeEach(() => {
   fileUpload.mockReset()
+  global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    if (isTokenRequest(input)) return createTokenResponse()
+    throw new Error(`Unexpected fetch: ${String(input)}`)
+  })
   vi.mocked(LinearClient).mockImplementation(function () {
     return { fileUpload } as unknown as LinearClient
   })
@@ -41,8 +60,10 @@ describe("uploadAsset", () => {
       },
     })
     const fetchMock = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(null, { status: 200 })
+      async (url: RequestInfo | URL, _init?: RequestInit) =>
+        isTokenRequest(url)
+          ? createTokenResponse()
+          : new Response(null, { status: 200 })
     )
     global.fetch = fetchMock
 
@@ -55,8 +76,8 @@ describe("uploadAsset", () => {
 
     expect(result).toEqual({ assetUrl: "https://assets.example/abc.png" })
     expect(fileUpload).toHaveBeenCalledWith("image/png", "shot.png", 3)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [url, init] = fetchMock.mock.calls[1]
     expect(url).toBe("https://upload.example/put")
     expect(init?.method).toBe("PUT")
     const headers = new Headers(init?.headers)
@@ -85,7 +106,11 @@ describe("uploadAsset", () => {
         headers: [],
       },
     })
-    global.fetch = vi.fn(async () => new Response(null, { status: 500 }))
+    global.fetch = vi.fn(async (url: RequestInfo | URL) =>
+      isTokenRequest(url)
+        ? createTokenResponse()
+        : new Response(null, { status: 500 })
+    )
 
     const gateway = createLinearGateway(config)
     await expect(
@@ -98,32 +123,61 @@ describe("uploadAsset", () => {
   })
 })
 
+describe("app authentication", () => {
+  it("exchanges app credentials and authenticates the SDK with the access token", async () => {
+    const request = vi.fn(async () => ({ teams: { nodes: [] } }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { client: { request } } as unknown as LinearClient
+    })
+
+    await createLinearGateway(config).listTeams()
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      LINEAR_OAUTH_TOKEN_URL,
+      expect.objectContaining({
+        method: "POST",
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          scope: "read,write",
+          client_id: "linear-client",
+          client_secret: "linear-secret",
+        }),
+      })
+    )
+    expect(LinearClient).toHaveBeenCalledWith({
+      accessToken: "linear-app-token",
+    })
+  })
+})
+
 describe("teams and issue creation", () => {
   it("lists active teams in display-name order", async () => {
-    const teams = vi.fn(async () => ({
-      nodes: [
-        {
-          id: "team-product",
-          key: "PRD",
-          displayName: "Product",
-          retiredAt: null,
-        },
-        {
-          id: "team-archived",
-          key: "OLD",
-          displayName: "Archived",
-          retiredAt: new Date(),
-        },
-        {
-          id: "team-base",
-          key: "BAS",
-          displayName: "Base",
-          retiredAt: null,
-        },
-      ],
+    const request = vi.fn(async () => ({
+      teams: {
+        nodes: [
+          {
+            id: "team-product",
+            key: "PRD",
+            displayName: "Product",
+            retiredAt: null,
+          },
+          {
+            id: "team-archived",
+            key: "OLD",
+            displayName: "Archived",
+            retiredAt: "2026-08-03T00:00:00.000Z",
+          },
+          {
+            id: "team-base",
+            key: "BAS",
+            displayName: "Base",
+            retiredAt: null,
+          },
+        ],
+      },
     }))
     vi.mocked(LinearClient).mockImplementation(function () {
-      return { teams } as unknown as LinearClient
+      return { client: { request } } as unknown as LinearClient
     })
 
     await expect(createLinearGateway(config).listTeams()).resolves.toEqual([

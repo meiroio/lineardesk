@@ -101,7 +101,8 @@ export function makeBusinessWorld() {
     googleClientId: "google-id",
     googleClientSecret: "google-secret",
     linear: {
-      apiKey: "lin_api_key",
+      clientId: "linear-client",
+      clientSecret: "linear-secret",
       teamId: "team-id",
       teamKey: "BAS",
       initialStateName: "Triage",

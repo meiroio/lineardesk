@@ -65,7 +65,8 @@ export function readAppConfig(env: Env = process.env): AppConfig {
     googleClientId: required(env, "GOOGLE_CLIENT_ID"),
     googleClientSecret: required(env, "GOOGLE_CLIENT_SECRET"),
     linear: {
-      apiKey: required(env, "LINEAR_API_KEY"),
+      clientId: required(env, "LINEAR_CLIENT_ID"),
+      clientSecret: required(env, "LINEAR_CLIENT_SECRET"),
       teamId: env.LINEAR_TEAM_ID?.trim() || DEFAULT_LINEAR_TEAM_ID,
       teamKey: env.LINEAR_TEAM_KEY?.trim() || DEFAULT_LINEAR_TEAM_KEY,
       initialStateName:

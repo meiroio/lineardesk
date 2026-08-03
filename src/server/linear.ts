@@ -30,6 +30,17 @@ type IssueLabelCandidate = {
 }
 
 type LinearGatewayConfig = AppConfig["linear"]
+type LinearClientProvider = () => Promise<LinearClient>
+type LinearTeamsResponse = {
+  teams: {
+    nodes: Array<{
+      id: string
+      key: string
+      displayName: string
+      retiredAt: string | null
+    }>
+  }
+}
 type LinearIssueCreateInput = {
   title: string
   description: string
@@ -38,6 +49,10 @@ type LinearIssueCreateInput = {
   labelIds?: string[]
   priority?: number
 }
+
+const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
+const LINEAR_OAUTH_SCOPE = "read,write"
+const LINEAR_TOKEN_REFRESH_BUFFER_MS = 60_000
 
 export function selectWorkflowStateByName<T extends WorkflowStateCandidate>(
   states: readonly T[],
@@ -129,23 +144,95 @@ export function buildRequesterReplyCommentBody(input: {
 export function createLinearGateway(
   config: LinearGatewayConfig
 ): LinearGateway {
-  return new LinearSdkGateway(
-    new LinearClient({ apiKey: config.apiKey }),
-    config
-  )
+  return new LinearSdkGateway(createLinearClientProvider(config), config)
+}
+
+function createLinearClientProvider(
+  config: LinearGatewayConfig
+): LinearClientProvider {
+  let current: { client: LinearClient; expiresAt: number } | null = null
+  let pending: Promise<LinearClient> | null = null
+
+  return async () => {
+    if (
+      current &&
+      Date.now() < current.expiresAt - LINEAR_TOKEN_REFRESH_BUFFER_MS
+    ) {
+      return current.client
+    }
+
+    pending ??= requestLinearClient(config)
+      .then((next) => {
+        current = next
+        return next.client
+      })
+      .finally(() => {
+        pending = null
+      })
+
+    return pending
+  }
+}
+
+async function requestLinearClient(config: LinearGatewayConfig) {
+  const response = await fetch(LINEAR_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: LINEAR_OAUTH_SCOPE,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `Linear OAuth token request failed with status ${response.status}`
+    )
+  }
+
+  const payload = (await response.json()) as {
+    access_token?: unknown
+    expires_in?: unknown
+  }
+  if (
+    typeof payload.access_token !== "string" ||
+    !payload.access_token ||
+    typeof payload.expires_in !== "number" ||
+    payload.expires_in <= 0
+  ) {
+    throw new Error("Linear OAuth token response was invalid")
+  }
+
+  return {
+    client: new LinearClient({ accessToken: payload.access_token }),
+    expiresAt: Date.now() + payload.expires_in * 1000,
+  }
 }
 
 class LinearSdkGateway implements LinearGateway {
   constructor(
-    private readonly client: LinearClient,
+    private readonly getClient: LinearClientProvider,
     private readonly config: LinearGatewayConfig
   ) {}
 
   async listTeams(): Promise<LinearTeamSnapshot[]> {
-    const teams = await this.client.teams({
-      first: 250,
-      includeArchived: false,
-    })
+    const client = await this.getClient()
+    const { teams } = await client.client.request<
+      LinearTeamsResponse,
+      Record<string, never>
+    >(`
+      query LinearDeskTeams {
+        teams(first: 250, includeArchived: false) {
+          nodes {
+            id
+            key
+            displayName
+            retiredAt
+          }
+        }
+      }
+    `)
 
     return teams.nodes
       .filter((team) => !team.retiredAt)
@@ -164,8 +251,9 @@ class LinearSdkGateway implements LinearGateway {
       this.findInitialState(input.teamId),
       this.findIssueLabel(input.teamId),
     ])
+    const client = await this.getClient()
 
-    const payload = await this.client.createIssue(
+    const payload = await client.createIssue(
       buildLinearIssueInput({
         ...input,
         stateId: state.id,
@@ -177,7 +265,7 @@ class LinearSdkGateway implements LinearGateway {
 
     const issue =
       (await payload.issue) ??
-      (payload.issueId ? await this.client.issue(payload.issueId) : null)
+      (payload.issueId ? await client.issue(payload.issueId) : null)
     if (!issue)
       throw new Error("Linear issue was created but could not be fetched")
 
@@ -199,7 +287,8 @@ class LinearSdkGateway implements LinearGateway {
   async listIssueComments(
     issueId: string
   ): Promise<LinearIssueCommentSnapshot[]> {
-    const comments = await this.client.comments({
+    const client = await this.getClient()
+    const comments = await client.comments({
       filter: { issue: { id: { eq: issueId } } },
       first: 50,
     })
@@ -215,7 +304,8 @@ class LinearSdkGateway implements LinearGateway {
   async createIssueComment(
     input: CreateIssueCommentInput
   ): Promise<LinearIssueCommentSnapshot> {
-    const payload = await this.client.createComment(input)
+    const client = await this.getClient()
+    const payload = await client.createComment(input)
     if (!payload.success)
       throw new Error("Linear issue comment creation failed")
 
@@ -235,7 +325,8 @@ class LinearSdkGateway implements LinearGateway {
   }
 
   async uploadAsset(input: UploadAssetInput): Promise<UploadAssetResult> {
-    const payload = await this.client.fileUpload(
+    const client = await this.getClient()
+    const payload = await client.fileUpload(
       input.contentType,
       input.filename,
       input.bytes.byteLength
@@ -270,7 +361,8 @@ class LinearSdkGateway implements LinearGateway {
     description: string
     priority: number
   }): Promise<void> {
-    const payload = await this.client.updateIssue(input.issueId, {
+    const client = await this.getClient()
+    const payload = await client.updateIssue(input.issueId, {
       title: input.title,
       description: input.description,
       priority: input.priority,
@@ -282,7 +374,8 @@ class LinearSdkGateway implements LinearGateway {
     issueId: string
     priority: number
   }): Promise<void> {
-    const payload = await this.client.updateIssue(input.issueId, {
+    const client = await this.getClient()
+    const payload = await client.updateIssue(input.issueId, {
       priority: input.priority,
     })
     if (!payload.success) throw new Error("Linear issue update failed")
@@ -293,8 +386,9 @@ class LinearSdkGateway implements LinearGateway {
       input.resolution === "resolved" ? "completed" : "canceled",
       input.teamId
     )
+    const client = await this.getClient()
 
-    const payload = await this.client.updateIssue(input.issueId, {
+    const payload = await client.updateIssue(input.issueId, {
       stateId: state.id,
     })
     if (!payload.success) throw new Error("Linear issue update failed")
@@ -312,7 +406,8 @@ class LinearSdkGateway implements LinearGateway {
   async listIssueStates(issueIds: string[]): Promise<IssueStateSnapshot[]> {
     if (issueIds.length === 0) return []
 
-    const issues = await this.client.issues({
+    const client = await this.getClient()
+    const issues = await client.issues({
       filter: { id: { in: issueIds } },
       first: 250,
     })
@@ -369,7 +464,8 @@ class LinearSdkGateway implements LinearGateway {
   }
 
   private async findInitialState(teamId: string) {
-    const states = await this.client.workflowStates({
+    const client = await this.getClient()
+    const states = await client.workflowStates({
       first: 100,
       includeArchived: false,
     })
@@ -389,7 +485,8 @@ class LinearSdkGateway implements LinearGateway {
   }
 
   private async findWorkflowStateByType(type: string, teamId: string) {
-    const states = await this.client.workflowStates({
+    const client = await this.getClient()
+    const states = await client.workflowStates({
       first: 100,
       includeArchived: false,
     })
@@ -405,7 +502,8 @@ class LinearSdkGateway implements LinearGateway {
   }
 
   private async findIssueLabel(teamId: string) {
-    const labels = await this.client.issueLabels({
+    const client = await this.getClient()
+    const labels = await client.issueLabels({
       first: 100,
       includeArchived: false,
     })

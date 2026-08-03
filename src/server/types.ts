@@ -20,7 +20,8 @@ export type AppConfig = {
   googleClientId: string
   googleClientSecret: string
   linear: {
-    apiKey: string
+    clientId: string
+    clientSecret: string
     teamId: string
     teamKey: string
     initialStateName: string

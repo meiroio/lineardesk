@@ -16,7 +16,8 @@ const config: AppConfig = {
   googleClientId: "google-client-id",
   googleClientSecret: "google-client-secret",
   linear: {
-    apiKey: "lin_api_key",
+    clientId: "linear-client",
+    clientSecret: "linear-secret",
     teamId: "team-id",
     teamKey: "TEAM",
     initialStateName: "Triage",

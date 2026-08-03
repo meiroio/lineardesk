@@ -8,7 +8,8 @@ const base = {
   BETTER_AUTH_URL: "http://localhost:3000",
   GOOGLE_CLIENT_ID: "g",
   GOOGLE_CLIENT_SECRET: "gs",
-  LINEAR_API_KEY: "lin",
+  LINEAR_CLIENT_ID: "linear-client",
+  LINEAR_CLIENT_SECRET: "linear-secret",
   LINEAR_WEBHOOK_SECRET: "wh",
 }
 
@@ -53,7 +54,8 @@ describe("readAppConfig", () => {
       BETTER_AUTH_URL: "http://localhost:3000",
       GOOGLE_CLIENT_ID: "google-id",
       GOOGLE_CLIENT_SECRET: "google-secret",
-      LINEAR_API_KEY: "lin_api_key",
+      LINEAR_CLIENT_ID: "linear-client",
+      LINEAR_CLIENT_SECRET: "linear-secret",
       LINEAR_WEBHOOK_SECRET: "webhook-secret",
     })
 

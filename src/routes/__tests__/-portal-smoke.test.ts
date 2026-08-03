@@ -156,9 +156,15 @@ describe("portal route smoke", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Smoke flow CSV export failure" },
     })
-    fireEvent.change(screen.getByLabelText("Team"), {
-      target: { value: "team-product" },
+    const team = screen.getByRole("combobox", { name: "Team" })
+    expect(team.textContent).toContain("Base (BAS)")
+    fireEvent.click(team)
+    const product = await screen.findByRole("option", {
+      name: "Product (PRD)",
     })
+    fireEvent.pointerDown(product, { button: 0, pointerType: "mouse" })
+    fireEvent.click(product)
+    expect(team.textContent).toContain("Product (PRD)")
     fireEvent.click(screen.getByLabelText("High"))
     fireEvent.change(screen.getByLabelText("Expected behaviour"), {
       target: { value: "The CSV export downloads." },

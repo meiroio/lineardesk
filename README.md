@@ -35,7 +35,8 @@ Required runtime variables:
 - `BETTER_AUTH_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `LINEAR_API_KEY`
+- `LINEAR_CLIENT_ID`
+- `LINEAR_CLIENT_SECRET`
 - `LINEAR_WEBHOOK_SECRET`
 
 Email settings:
@@ -47,10 +48,15 @@ Email settings:
 
 Linear defaults:
 
-- `LINEAR_TEAM_ID=87e7afa0-8d4c-4c43-86a5-090799f403b9` — default team in the web picker and the team used for Slack-created tickets. The web portal also lists the other active teams available to the API key.
+- `LINEAR_TEAM_ID=87e7afa0-8d4c-4c43-86a5-090799f403b9` — default team in the web picker and the team used for Slack-created tickets. The web portal also lists the other active teams available to the Linear app.
 - `LINEAR_TEAM_KEY=BAS`
 - `LINEAR_INITIAL_STATE_NAME=Triage`
 - `LINEAR_LABEL_NAME=Bug`
+
+Linear authentication uses an OAuth application's client credentials, so
+issues, comments, and edits are attributed to the app instead of the person
+running LinearDesk. Enable the client-credentials grant for the app and allow
+the `read` and `write` scopes.
 
 ### Customer organizations
 
@@ -105,7 +111,7 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - `RESEND_API_KEY` — enables Resend for magic links and organization invitations; `EMAIL_PROVIDER=resend` also requires it
    - `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_APP_NAME` — optional email overrides; see the defaults above
-   - `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
+   - `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, `LINEAR_TEAM_ID`, `LINEAR_TEAM_KEY`, `LINEAR_INITIAL_STATE_NAME`, `LINEAR_LABEL_NAME`, `LINEAR_WEBHOOK_SECRET`
    - `CRON_SECRET` — a random string that secures the reconcile cron (Vercel sends it as a Bearer token)
    - `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` — optional; omit to disable Slack intake
    - `GEMINI_API_KEY` — optional; enables AI pre-fill of the Slack ticket modal from the thread

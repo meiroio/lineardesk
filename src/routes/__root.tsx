@@ -34,6 +34,12 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
         href: "/favicon.ico",
         sizes: "32x32",
       },
+      {
+        rel: "icon",
+        href: "/favicon-256.png",
+        type: "image/png",
+        sizes: "256x256",
+      },
       ...(appCss ? [{ rel: "stylesheet", href: appCss }] : []),
     ],
     scripts: [

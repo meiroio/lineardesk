@@ -7,6 +7,13 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest } from "@/lib/helpdesk-api"
 import { ApiError, requestKeys, teamKeys } from "@/lib/helpdesk-api"
@@ -54,6 +61,7 @@ function NewRequest() {
     : teams.some((team) => team.id === defaultTeamId)
       ? defaultTeamId
       : (teams[0]?.id ?? "")
+  const selectedTeam = teams.find((team) => team.id === selectedTeamId)
 
   const expectedPaste = usePasteImageUpload(
     api.uploadImage,
@@ -139,29 +147,39 @@ function NewRequest() {
 
             <div className="grid gap-2">
               <Label htmlFor="request-team">Team</Label>
-              <select
-                id="request-team"
+              <Select
                 name="teamId"
                 required
-                disabled={teamStatus !== "success"}
-                value={selectedTeamId}
-                onChange={(event) => setTeamId(event.target.value)}
-                className="h-9 w-full rounded-4xl border border-input bg-input/30 px-3 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                disabled={teamStatus !== "success" || teams.length === 0}
+                value={selectedTeamId || null}
+                onValueChange={(value) => setTeamId(value ?? "")}
               >
-                {teamStatus === "pending" ? (
-                  <option value="">Loading teams…</option>
-                ) : teams.length === 0 ? (
-                  <option value="">No teams available</option>
-                ) : (
-                  teams.map((team) => (
-                    <option key={team.id} value={team.id}>
+                <SelectTrigger
+                  id="request-team"
+                  aria-invalid={teamError ? true : undefined}
+                  aria-describedby={
+                    teamError ? "request-team-error" : undefined
+                  }
+                  className="w-full"
+                >
+                  <SelectValue>
+                    {selectedTeam
+                      ? `${selectedTeam.name} (${selectedTeam.key})`
+                      : teamStatus === "pending"
+                        ? "Loading teams…"
+                        : "No teams available"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
                       {team.name} ({team.key})
-                    </option>
-                  ))
-                )}
-              </select>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {teamError ? (
-                <p className="text-sm text-destructive">
+                <p id="request-team-error" className="text-sm text-destructive">
                   Teams could not be loaded.
                 </p>
               ) : null}
