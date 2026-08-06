@@ -189,6 +189,7 @@ export type SlackGateway = {
     text: string
   }) => Promise<{ channel: string; ts: string }>
   getUserEmail: (userId: string) => Promise<string | null>
+  findUserIdByEmail: (email: string) => Promise<string | null>
   getPermalink: (input: {
     channel: string
     messageTs: string
@@ -258,6 +259,9 @@ export type HelpdeskRepository = {
   getRequestForOrganization: (
     id: string,
     organizationId: string
+  ) => Promise<RequestRecord | null>
+  getRequestByLinearIssueId: (
+    linearIssueId: string
   ) => Promise<RequestRecord | null>
   listOpenRequests: (limit: number) => Promise<RequestRecord[]>
   hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>

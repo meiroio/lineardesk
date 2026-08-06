@@ -35,7 +35,9 @@ describe("portal route smoke", () => {
   let fetchRequest: ReturnType<typeof vi.fn>
   let fetchRequests: ReturnType<typeof vi.fn>
   let requirePortalAuth: ReturnType<typeof vi.fn>
+  let updateRequest: ReturnType<typeof vi.fn>
   let updateRequestSeverity: ReturnType<typeof vi.fn>
+  let uploadImage: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     Object.defineProperty(window, "scrollTo", {
@@ -70,6 +72,7 @@ describe("portal route smoke", () => {
         expectedBehaviour: string
         currentBehaviour: string
         stepsToReproduce: string
+        attachments: string
       }
       const request = makeRequest({
         id: "request-2",
@@ -83,6 +86,7 @@ describe("portal route smoke", () => {
           "",
           "Steps to reproduce",
           input.stepsToReproduce,
+          ...(input.attachments ? ["", "Attachments", input.attachments] : []),
         ].join("\n"),
         linearIdentifier: "PRD-102",
         linearTeamId: input.teamId,
@@ -92,6 +96,23 @@ describe("portal route smoke", () => {
 
       return { request }
     })
+    updateRequest = vi.fn(
+      async (
+        id: string,
+        input: { title: string; description: string; severity: string }
+      ) => {
+        const request = requests.find((item) => item.id === id)
+        if (!request) throw new Error("not_found")
+
+        const updated = {
+          ...request,
+          title: input.title,
+          description: input.description,
+        }
+        requests = requests.map((item) => (item.id === id ? updated : item))
+        return { request: updated }
+      }
+    )
     updateRequestSeverity = vi.fn(async (id: string, severity: number) => {
       const request = requests.find((item) => item.id === id)
       if (!request) throw new Error("not_found")
@@ -100,6 +121,10 @@ describe("portal route smoke", () => {
       requests = requests.map((item) => (item.id === id ? updated : item))
       return { request: updated }
     })
+    uploadImage = vi.fn(async (file: File) => ({
+      assetUrl: `https://uploads.linear.app/${file.name}`,
+      filename: file.name,
+    }))
   })
 
   afterEach(() => {
@@ -127,10 +152,11 @@ describe("portal route smoke", () => {
           ],
           defaultTeamId: "team-id",
         })),
-        updateRequest: vi.fn(),
+        updateRequest:
+          updateRequest as AppRouterContext["api"]["updateRequest"],
         updateRequestSeverity:
           updateRequestSeverity as AppRouterContext["api"]["updateRequestSeverity"],
-        uploadImage: vi.fn(),
+        uploadImage: uploadImage as AppRouterContext["api"]["uploadImage"],
       },
       auth: {
         signOut: vi.fn(async () => undefined),
@@ -172,6 +198,19 @@ describe("portal route smoke", () => {
     fireEvent.change(screen.getByLabelText("Current behaviour"), {
       target: { value: "The export returns a 500." },
     })
+    fireEvent.drop(screen.getByText("Drop screenshots here or"), {
+      dataTransfer: {
+        files: [
+          new File(["screenshot"], "export-error.png", { type: "image/png" }),
+        ],
+      },
+    })
+    await waitFor(() => {
+      expect(uploadImage).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "export-error.png" })
+      )
+      expect(screen.getByRole("img", { name: "export-error.png" })).toBeTruthy()
+    })
     fireEvent.change(screen.getByLabelText("Steps to reproduce"), {
       target: { value: "Open Reports and click Export CSV." },
     })
@@ -185,6 +224,8 @@ describe("portal route smoke", () => {
         expectedBehaviour: "The CSV export downloads.",
         currentBehaviour: "The export returns a 500.",
         stepsToReproduce: "Open Reports and click Export CSV.",
+        attachments:
+          "![export-error.png](https://uploads.linear.app/export-error.png)",
       })
     })
     expect(
@@ -194,6 +235,32 @@ describe("portal route smoke", () => {
     ).toBeTruthy()
     expect(screen.getAllByText("PRD-102")).toHaveLength(2)
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()
+    expect(screen.getByRole("img", { name: "export-error.png" })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+    fireEvent.drop(screen.getByText("Drop screenshots here or"), {
+      dataTransfer: {
+        files: [
+          new File(["screenshot"], "updated-view.png", { type: "image/png" }),
+        ],
+      },
+    })
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "updated-view.png" })).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => {
+      expect(updateRequest).toHaveBeenCalledWith(
+        "request-2",
+        expect.objectContaining({
+          description: expect.stringContaining(
+            "![updated-view.png](https://uploads.linear.app/updated-view.png)"
+          ),
+        })
+      )
+    })
+    expect(screen.getByRole("img", { name: "updated-view.png" })).toBeTruthy()
+
     const severity = screen.getByRole("combobox", {
       name: "Severity: High",
     })

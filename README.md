@@ -122,13 +122,13 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
 
 4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
 
-5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook`. This keeps request statuses current in near-real-time.
+5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook` and subscribe it to both **Issue** and **Comment** resources. This keeps request statuses current and drives Slack notifications for Linear updates.
 
 **Whenever the schema changes, apply the migration to prod _before or with_ the deploy that depends on it** — run `bun run db:migrate:prod`. The Vercel build does **not** run migrations, so shipping schema-dependent code ahead of its migration will 500 every query against the changed table until the migration lands.
 
 ### Status sync
 
-The Linear webhook is the primary, near-real-time path for status updates. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) pulls the current Linear state for every non-terminal request and corrects any that drifted. Comments are always read live from Linear, so they never go stale.
+The Linear webhook is the primary, near-real-time path for status updates and requester Slack notifications. Subscribe it to both **Issue** and **Comment** resources. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) pulls the current Linear state for every non-terminal request and corrects any that drifted. Comments are always read live from Linear, so they never go stale.
 
 ### Slack intake (optional)
 
@@ -151,9 +151,19 @@ With `GEMINI_API_KEY` set, the "Create LinearDesk ticket" message shortcut reads
 
 Tickets created from any flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
 
+**Requester notifications**
+
+Human-authored issue updates and comment changes in Linear notify the request
+creator in Slack. Tickets created from Slack are updated in their originating
+thread and mention the creator. Web-created tickets are delivered to the
+creator's LinearDesk App Home conversation after matching the portal email with
+`users.lookupByEmail`. The existing `chat:write` and `users:read.email` scopes
+in the manifest cover both paths. Changes made by LinearDesk itself are skipped
+so requesters are not notified about their own portal actions.
+
 **Portal ticket editing**
 
-The ticket detail page has an **Edit** button visible to approved users in the ticket's customer organization while the ticket is in a non-terminal state. It lets them change the Title, Description, and Severity; the update is applied to both the Linear issue and the portal database.
+The ticket detail page has an **Edit** button visible to approved users in the ticket's customer organization while the ticket is in a non-terminal state. It lets them change the Title, Description, and Severity, and attach more screenshots through the same drop/upload control used during request creation. The update is applied to both the Linear issue and the portal database.
 
 **Phase 2 deploy step — migrate before deploying**
 
@@ -164,10 +174,6 @@ bun run db:migrate:prod
 ```
 
 Deploying without this migration will cause every `@mention` event to 500 until the table exists.
-
-**Planned follow-up (Plan B)**
-
-Status and comment updates flowing back into the originating Slack thread are not yet implemented.
 
 ### Self-hosting (optional)
 

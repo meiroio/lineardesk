@@ -5,6 +5,7 @@ import type { FormEvent } from "react"
 import { useEffect, useState } from "react"
 
 import { DescriptionBody } from "@/components/description-body"
+import { ImageDropzone } from "@/components/image-dropzone"
 import { PageShell } from "@/components/page-shell"
 import { SeveritySelect } from "@/components/severity-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -32,6 +33,7 @@ import {
   requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
+import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 
 export const Route = createFileRoute("/requests/$requestId")({
   beforeLoad: ({ context }) => context.requirePortalAuth(),
@@ -54,8 +56,15 @@ function RequestDetail() {
   const [editError, setEditError] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
+  const [editAttachments, setEditAttachments] = useState("")
+  const [editUploadError, setEditUploadError] = useState<string | null>(null)
   const [severityBusy, setSeverityBusy] = useState(false)
   const [severityError, setSeverityError] = useState<string | null>(null)
+  const editAttachmentUpload = usePasteImageUpload(
+    api.uploadImage,
+    setEditAttachments,
+    setEditUploadError
+  )
 
   // The record (title, description, severity, dates, status) already arrived
   // with the list, so seed it as placeholder data: the page renders instantly
@@ -152,6 +161,8 @@ function RequestDetail() {
     if (!request) return
     setEditTitle(request.title)
     setEditDescription(request.description)
+    setEditAttachments("")
+    setEditUploadError(null)
     setEditError(null)
     setEditing(true)
   }
@@ -202,7 +213,9 @@ function RequestDetail() {
     try {
       const data = await api.updateRequest(requestId, {
         title: editTitle,
-        description: editDescription,
+        description: [editDescription.trim(), editAttachments.trim()]
+          .filter(Boolean)
+          .join("\n\n"),
         severity: severityLabelOf(request?.severity ?? null),
       })
       queryClient.setQueryData<PortalRequest>(
@@ -213,6 +226,7 @@ function RequestDetail() {
             : data.request
       )
       void queryClient.invalidateQueries({ queryKey: requestKeys.list })
+      setEditAttachments("")
       setEditing(false)
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -355,20 +369,39 @@ function RequestDetail() {
                     />
                   </div>
 
-                  {editError ? (
-                    <p className="text-sm text-destructive">{editError}</p>
+                  <ImageDropzone
+                    id="edit-attachments"
+                    imageUpload={editAttachmentUpload}
+                    previewText={editAttachments}
+                    onClear={() => setEditAttachments("")}
+                  />
+
+                  {editUploadError || editError ? (
+                    <p className="text-sm text-destructive">
+                      {editUploadError ?? editError}
+                    </p>
                   ) : null}
 
                   <div className="flex items-center justify-end gap-2">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setEditing(false)}
+                      onClick={() => {
+                        setEditAttachments("")
+                        setEditing(false)
+                      }}
                     >
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={editBusy}>
-                      {editBusy ? "Saving..." : "Save"}
+                    <Button
+                      type="submit"
+                      disabled={editBusy || editAttachmentUpload.pending > 0}
+                    >
+                      {editBusy
+                        ? "Saving..."
+                        : editAttachmentUpload.pending > 0
+                          ? "Uploading..."
+                          : "Save"}
                     </Button>
                   </div>
                 </form>

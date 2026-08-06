@@ -1,6 +1,7 @@
 import { Elysia } from "elysia"
 
 import { buildTranscript } from "../ai/gemini"
+import { scheduleBackground } from "../background"
 import {
   mergeBugReportSections,
   parseCreateRequestInput,
@@ -25,41 +26,6 @@ import {
   SlackInteractivityResponseModel,
 } from "./contracts"
 import type { ApiDependenciesPlugin } from "./dependencies"
-
-type WaitUntil = (promise: Promise<unknown>) => void
-
-type VercelRequestContext = {
-  get?: () => { waitUntil?: WaitUntil } | undefined
-}
-
-// Resolve the runtime's waitUntil so post-ack background work keeps the
-// serverless function alive. Vercel's Node runtime does NOT expose it on the
-// Request; Workers-style runtimes attach it to the request/context object.
-function getWaitUntil(request: Request): WaitUntil | undefined {
-  const onRequest = (request as { waitUntil?: WaitUntil }).waitUntil
-  if (typeof onRequest === "function") return onRequest.bind(request)
-
-  const store = (
-    globalThis as Record<symbol, VercelRequestContext | undefined>
-  )[Symbol.for("@vercel/request-context")]
-  const ctx = store?.get?.()
-  if (ctx && typeof ctx.waitUntil === "function") return ctx.waitUntil.bind(ctx)
-
-  return undefined
-}
-
-async function scheduleBackground(request: Request, work: Promise<unknown>) {
-  const safe = work.catch((error) => {
-    console.error("slack background work failed", error)
-  })
-  const waitUntil = getWaitUntil(request)
-  if (waitUntil) {
-    waitUntil(safe)
-    return
-  }
-
-  await safe
-}
 
 function getSlackTicketFailureMessage(
   error: unknown,
@@ -226,7 +192,11 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
                 })
             }
           })()
-          await scheduleBackground(request, work)
+          await scheduleBackground(
+            request,
+            work,
+            "slack background work failed"
+          )
           return ""
         }
 
@@ -295,7 +265,11 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
             }
           })()
 
-          await scheduleBackground(request, work)
+          await scheduleBackground(
+            request,
+            work,
+            "slack background work failed"
+          )
           return ""
         }
 
@@ -411,7 +385,7 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
               )
           }
         })()
-        await scheduleBackground(request, work)
+        await scheduleBackground(request, work, "slack background work failed")
         return ""
       },
       {

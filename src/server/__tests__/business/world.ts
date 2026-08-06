@@ -181,6 +181,10 @@ export function makeBusinessWorld() {
       const request = requests.get(id)
       return request?.organizationId === organizationId ? request : null
     },
+    getRequestByLinearIssueId: async (linearIssueId: string) =>
+      Array.from(requests.values()).find(
+        (request) => request.linearIssueId === linearIssueId
+      ) ?? null,
     listOpenRequests: async (limit: number) =>
       Array.from(requests.values())
         .filter(
@@ -379,6 +383,10 @@ export function makeBusinessWorld() {
       return { channel: input.channel, ts: `post-${slackPosts.length}` }
     },
     getUserEmail: async (userId) => slackUserEmails.get(userId) ?? null,
+    findUserIdByEmail: async (email) =>
+      Array.from(slackUserEmails.entries()).find(
+        ([, userEmail]) => userEmail === email
+      )?.[0] ?? null,
     getPermalink: async (input) =>
       `https://acme.slack.com/archives/${input.channel}/p${input.messageTs.replace(".", "")}`,
     getThreadReplies: async (input) => ({

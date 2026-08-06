@@ -30,8 +30,9 @@ organization's portal list.
    - **Expected behaviour** — what should happen.
    - **Current behaviour** — what actually happens.
    - **Steps to reproduce** — how to trigger it (`1. … 2. … 3. …`).
-4. **Paste screenshots** directly into any of the three text fields — they
-   upload and attach to the issue automatically.
+4. Add screenshots in the single **Attachments** area below the form: drop them
+   there or click **Upload images**. You can also paste a screenshot directly
+   into a text field. Images upload and attach to the issue automatically.
 5. Click **Submit request**. You land on the request page, where you can track
    it from then on.
 
@@ -86,6 +87,12 @@ The portal home page (**Requests**) lists the tickets filed under your customer
 organization, with their live Linear status. It refreshes on its own every few
 seconds, so a status change made by the team shows up without a reload.
 
+The requester is also notified in Slack when the Linear team updates the issue
+or adds, edits, or removes a comment. Slack-created requests are updated in the
+original thread; web-created requests are sent to the requester's LinearDesk
+App Home conversation. Slack and LinearDesk must use the same email address for
+the requester to be found.
+
 Your request list is shared across your customer organization. Other approved
 users from the same organization can see tickets filed under your company's
 approved domains, and you can see theirs.
@@ -130,6 +137,9 @@ While a request is still open (not Done / Canceled / Duplicate), approved users
 in the ticket's customer organization see an **Edit** button on the description.
 You can change the **Title**, the **Description**, and the **Severity**. Saving
 updates both the portal and the underlying Linear issue.
+
+The edit form also has one **Attachments** area. Drop or select new screenshots
+there, review their previews, and save to append them to the description.
 
 This is the place to fix up a ticket the AI drafted from a Slack mention, or to
 bump the severity if things got worse.
@@ -176,5 +186,7 @@ Linear account — the portal is your view into it:
   link from the confirmation and **Edit** the title, description, or severity.
 - **I don't see my finished tickets.** Switch the list filter from **Active** to
   **Done**.
-- **Can I attach a screenshot?** Yes — paste it into any field on the web form,
-  or include it in the Slack thread/message you file from.
+- **Can I attach a screenshot?** Yes — use the single **Attachments** area to
+  drop or select images, or paste an image into a text field. The same upload
+  area is available when editing. In Slack, include it in the thread/message
+  you file from.

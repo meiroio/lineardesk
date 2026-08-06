@@ -67,6 +67,7 @@ function makeRepo(): HelpdeskRepository {
     getUserIdByEmail: vi.fn(async () => "user-id"),
     listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
     getRequestForOrganization: vi.fn(async () => makeRecord()),
+    getRequestByLinearIssueId: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
@@ -123,6 +124,7 @@ function makeSlack(options: { email?: string | null } = {}): SlackGateway {
     updateView: vi.fn(async () => {}),
     postMessage: vi.fn(async () => ({ channel: "C1", ts: "1.2" })),
     getUserEmail: vi.fn(async () => options.email ?? "person@example.com"),
+    findUserIdByEmail: vi.fn(async () => "U1"),
     downloadFile: vi.fn(async () => ({
       bytes: new Uint8Array([1]),
       contentType: "image/png",

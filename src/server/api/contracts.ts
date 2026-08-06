@@ -82,6 +82,7 @@ export const CreateRequestBodyModel = t.Object({
   expectedBehaviour: t.String(),
   currentBehaviour: t.String(),
   stepsToReproduce: t.String(),
+  attachments: t.Optional(t.String()),
 })
 
 export const UpdateRequestBodyModel = t.Object({

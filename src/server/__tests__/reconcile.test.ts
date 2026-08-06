@@ -42,6 +42,7 @@ function makeRepo(open: RequestRecord[]): HelpdeskRepository {
     getUserIdByEmail: vi.fn(async () => "u1"),
     listRequestsForOrganization: vi.fn(async () => []),
     getRequestForOrganization: vi.fn(async () => null),
+    getRequestByLinearIssueId: vi.fn(async () => null),
     listOpenRequests: vi.fn(async () => open),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),

@@ -1,12 +1,15 @@
 import { Elysia } from "elysia"
 
+import { scheduleBackground } from "../background"
 import {
   extractIssueSnapshotFromWebhook,
+  extractLinearChangeFromWebhook,
   getLinearWebhookEventKey,
   hashRawBody,
   LINEAR_WEBHOOK_SIGNATURE_HEADER,
   LINEAR_WEBHOOK_TS_HEADER,
 } from "../webhooks"
+import { notifyRequestCreator } from "../slack/notifications"
 import { ErrorResponseModel, LinearWebhookResponseModel } from "./contracts"
 import type { ApiDependenciesPlugin } from "./dependencies"
 
@@ -36,15 +39,44 @@ export function createLinearWebhooksApi(
       }
 
       const snapshot = extractIssueSnapshotFromWebhook(payload)
+      const change = extractLinearChangeFromWebhook(payload)
+      const linearIssueId =
+        snapshot?.linearIssueId ?? change?.linearIssueId ?? null
+      const record =
+        deps.slack && change && linearIssueId
+          ? await deps.repo.getRequestByLinearIssueId(linearIssueId)
+          : null
+
       if (snapshot) await deps.repo.updateRequestFromLinear(snapshot)
 
       await deps.repo.recordWebhookEvent(
         eventKey,
-        snapshot?.linearIssueId ?? null,
+        linearIssueId,
         hashRawBody(rawBody)
       )
 
-      return { ok: true, ignored: !snapshot }
+      if (
+        deps.slack &&
+        record &&
+        change &&
+        !(
+          change.kind === "comment" &&
+          change.commentId === record.linearDetailsCommentId
+        )
+      ) {
+        await scheduleBackground(
+          request,
+          notifyRequestCreator({
+            slack: deps.slack,
+            request: record,
+            change,
+            baseUrl: deps.config.betterAuthUrl,
+          }),
+          "slack requester notification failed"
+        )
+      }
+
+      return { ok: true, ignored: !snapshot && !change }
     },
     {
       response: {

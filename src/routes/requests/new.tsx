@@ -2,6 +2,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
+import { ImageDropzone } from "@/components/image-dropzone"
 import { PageShell } from "@/components/page-shell"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -42,6 +43,7 @@ function NewRequest() {
   const [expectedBehaviour, setExpectedBehaviour] = useState("")
   const [currentBehaviour, setCurrentBehaviour] = useState("")
   const [stepsToReproduce, setStepsToReproduce] = useState("")
+  const [attachments, setAttachments] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -78,8 +80,16 @@ function NewRequest() {
     setStepsToReproduce,
     setUploadError
   )
+  const attachmentUpload = usePasteImageUpload(
+    api.uploadImage,
+    setAttachments,
+    setUploadError
+  )
   const uploadsPending =
-    expectedPaste.pending + currentPaste.pending + reproPaste.pending
+    expectedPaste.pending +
+    currentPaste.pending +
+    reproPaste.pending +
+    attachmentUpload.pending
 
   return (
     <PageShell
@@ -105,6 +115,7 @@ function NewRequest() {
                   expectedBehaviour,
                   currentBehaviour,
                   stepsToReproduce,
+                  attachments,
                 })
                 .then(({ request }) => {
                   queryClient.setQueryData(
@@ -236,9 +247,15 @@ function NewRequest() {
               onPaste={reproPaste.onPaste}
             />
 
+            <ImageDropzone
+              id="request-attachments"
+              imageUpload={attachmentUpload}
+              previewText={attachments}
+              onClear={() => setAttachments("")}
+            />
+
             <p className="text-xs text-muted-foreground">
-              Paste screenshots directly into any field — they upload to Linear
-              automatically.
+              You can also paste a screenshot directly into any text field.
             </p>
 
             {uploadError ? (

@@ -60,6 +60,23 @@ export function createSlackGateway(botToken: string): SlackGateway {
       )
       return data.user.profile?.email ?? null
     },
+    async findUserIdByEmail(email) {
+      try {
+        const data = await callGet<{ user?: { id?: string } }>(
+          "users.lookupByEmail",
+          { email }
+        )
+        return data.user?.id ?? null
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.endsWith("failed: users_not_found")
+        ) {
+          return null
+        }
+        throw error
+      }
+    },
     async getPermalink(input) {
       const data = await callGet<{ permalink: string }>("chat.getPermalink", {
         channel: input.channel,

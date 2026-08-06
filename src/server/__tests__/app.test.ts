@@ -8,6 +8,7 @@ import type {
   HelpdeskRepository,
   LinearGateway,
   RequestRecord,
+  SlackGateway,
 } from "../types"
 
 const config: AppConfig = {
@@ -76,6 +77,7 @@ function makeRepo(): HelpdeskRepository {
     getUserIdByEmail: vi.fn(async () => "user-id"),
     listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
     getRequestForOrganization: vi.fn(async () => makeRecord()),
+    getRequestByLinearIssueId: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
     hasProcessedWebhookEvent: vi.fn(async () => false),
     recordWebhookEvent: vi.fn(async () => undefined),
@@ -100,6 +102,22 @@ function makeLinear(): LinearGateway {
     closeIssue: vi.fn(),
     updateIssueFields: vi.fn(),
     updateIssuePriority: vi.fn(),
+  }
+}
+
+function makeSlack(): SlackGateway {
+  return {
+    openView: vi.fn(async () => "view-id"),
+    updateView: vi.fn(async () => undefined),
+    postMessage: vi.fn(async () => ({ channel: "C1", ts: "1.2" })),
+    getUserEmail: vi.fn(async () => "person@example.com"),
+    findUserIdByEmail: vi.fn(async () => "U1"),
+    getPermalink: vi.fn(async () => "https://example.slack.com/thread"),
+    getThreadReplies: vi.fn(async () => ({ messages: [] })),
+    downloadFile: vi.fn(async () => ({
+      bytes: new Uint8Array(),
+      contentType: "image/png",
+    })),
   }
 }
 
@@ -423,6 +441,60 @@ describe("createApiApp", () => {
       duplicate: true,
     })
     expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
+  })
+
+  it("notifies the request creator when a Linear user comments", async () => {
+    const repo = makeRepo()
+    vi.mocked(repo.getRequestByLinearIssueId).mockResolvedValue(
+      makeRecord({
+        source: "slack",
+        slackChannelId: "C1",
+        slackMessageTs: "123.45",
+      })
+    )
+    const slack = makeSlack()
+    const app = createApiApp({
+      config: {
+        ...config,
+        slack: { signingSecret: "sign", botToken: "xoxb" },
+      },
+      repo,
+      linear: makeLinear(),
+      slack,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+      verifyWebhook: vi.fn(async () => ({
+        type: "Comment",
+        action: "create",
+        webhookId: "webhook-id",
+        webhookTimestamp: 2,
+        actor: { type: "user", name: "Linear Teammate" },
+        data: {
+          id: "comment-2",
+          issueId: "linear-issue-id",
+          body: "Please try the fix in staging.",
+        },
+      })),
+    })
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/linear/webhook", {
+        method: "POST",
+        body: "{}",
+      })
+    )
+
+    expect(response.status).toBe(200)
+    expect(slack.postMessage).toHaveBeenCalledWith({
+      channel: "C1",
+      threadTs: "123.45",
+      text: expect.stringContaining("Please try the fix in staging."),
+    })
+    expect(repo.recordWebhookEvent).toHaveBeenCalledWith(
+      expect.any(String),
+      "linear-issue-id",
+      expect.any(String)
+    )
   })
 
   it("returns Linear comments with a request detail", async () => {

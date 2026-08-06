@@ -11,6 +11,24 @@ import type { LinearIssueWebhookSnapshot } from "./types"
 
 type UnknownRecord = Record<string, unknown>
 
+export type LinearWebhookChange =
+  | {
+      kind: "issue"
+      action: "update" | "remove"
+      linearIssueId: string
+      actorName: string | null
+      stateId: string | null
+      stateName: string | null
+    }
+  | {
+      kind: "comment"
+      action: "create" | "update" | "remove"
+      linearIssueId: string
+      actorName: string | null
+      commentId: string | null
+      body: string | null
+    }
+
 function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" ? (value as UnknownRecord) : null
 }
@@ -83,6 +101,56 @@ export function extractIssueSnapshotFromWebhook(
     linearStateName,
     linearStateType,
   }
+}
+
+export function extractLinearChangeFromWebhook(
+  payload: unknown
+): LinearWebhookChange | null {
+  const record = asRecord(payload)
+  const data = asRecord(record?.data)
+  const actor = asRecord(record?.actor)
+  const actorType = asString(actor?.type)?.toLowerCase()
+  const actorName = asString(actor?.name)
+  const action = asString(record?.action)
+
+  // Changes made through LinearDesk itself are attributed to the OAuth app;
+  // notifying the requester about their own portal action would be noise.
+  if (actorType && actorType !== "user") return null
+
+  if (
+    record?.type === "Issue" &&
+    (action === "update" || action === "remove")
+  ) {
+    const linearIssueId = asString(data?.id)
+    if (!linearIssueId) return null
+    const state = asRecord(data?.state)
+    return {
+      kind: "issue",
+      action,
+      linearIssueId,
+      actorName,
+      stateId: asString(state?.id),
+      stateName: asString(state?.name),
+    }
+  }
+
+  if (
+    record?.type === "Comment" &&
+    (action === "create" || action === "update" || action === "remove")
+  ) {
+    const linearIssueId = asString(data?.issueId)
+    if (!linearIssueId) return null
+    return {
+      kind: "comment",
+      action,
+      linearIssueId,
+      actorName,
+      commentId: asString(data?.id),
+      body: asString(data?.body),
+    }
+  }
+
+  return null
 }
 
 export { LINEAR_WEBHOOK_SIGNATURE_HEADER, LINEAR_WEBHOOK_TS_HEADER }

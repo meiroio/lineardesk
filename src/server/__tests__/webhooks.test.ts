@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   extractIssueSnapshotFromWebhook,
+  extractLinearChangeFromWebhook,
   getLinearWebhookEventKey,
   verifyLinearWebhookPayload,
 } from "../webhooks"
@@ -78,5 +79,42 @@ describe("Linear issue webhook extraction", () => {
         data: { id: "issue-id" },
       })
     ).toBe("Issue:update:webhook-id:issue-id:1")
+  })
+
+  it("extracts user-authored comment changes for requester notifications", () => {
+    expect(
+      extractLinearChangeFromWebhook({
+        type: "Comment",
+        action: "create",
+        actor: { type: "user", name: "Ada Lovelace" },
+        data: {
+          id: "comment-id",
+          issueId: "issue-id",
+          body: "Can you try this again?",
+        },
+      })
+    ).toEqual({
+      kind: "comment",
+      action: "create",
+      actorName: "Ada Lovelace",
+      commentId: "comment-id",
+      linearIssueId: "issue-id",
+      body: "Can you try this again?",
+    })
+  })
+
+  it("ignores changes made by the LinearDesk OAuth app", () => {
+    expect(
+      extractLinearChangeFromWebhook({
+        type: "Comment",
+        action: "create",
+        actor: { type: "integration", name: "LinearDesk" },
+        data: {
+          id: "comment-id",
+          issueId: "issue-id",
+          body: "Requester reply",
+        },
+      })
+    ).toBeNull()
   })
 })

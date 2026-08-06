@@ -116,6 +116,18 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return row ? toRequestRecord(row) : null
   }
 
+  async getRequestByLinearIssueId(
+    linearIssueId: string
+  ): Promise<RequestRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(helpdeskRequests)
+      .where(eq(helpdeskRequests.linearIssueId, linearIssueId))
+      .limit(1)
+    const row = rows[0] as HelpdeskRequestRow | undefined
+    return row ? toRequestRecord(row) : null
+  }
+
   async hasProcessedWebhookEvent(eventKey: string): Promise<boolean> {
     const [row] = await this.db
       .select({ eventKey: linearWebhookEvents.eventKey })

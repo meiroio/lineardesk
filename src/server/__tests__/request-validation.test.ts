@@ -28,6 +28,15 @@ describe("parseCreateRequestInput", () => {
     })
   })
 
+  it("adds uploaded images as a dedicated attachments section", () => {
+    expect(
+      parseCreateRequestInput({
+        ...valid,
+        attachments: "  ![error.png](https://uploads/error.png)  ",
+      }).description
+    ).toContain("Attachments\n![error.png](https://uploads/error.png)")
+  })
+
   it("rejects missing section fields", () => {
     expect(() =>
       parseCreateRequestInput({ ...valid, currentBehaviour: "   " })
@@ -47,6 +56,10 @@ describe("parseCreateRequestInput", () => {
 
     expect(() =>
       parseCreateRequestInput({ ...valid, expectedBehaviour: "x".repeat(5001) })
+    ).toThrow(RequestValidationError)
+
+    expect(() =>
+      parseCreateRequestInput({ ...valid, attachments: "x".repeat(5001) })
     ).toThrow(RequestValidationError)
   })
 

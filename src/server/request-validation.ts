@@ -29,12 +29,16 @@ export function mergeBugReportSections(input: {
   expectedBehaviour: string
   currentBehaviour: string
   stepsToReproduce: string
+  attachments?: string
 }): string {
   return [
     `Expected behaviour\n${input.expectedBehaviour}`,
     `Current behaviour\n${input.currentBehaviour}`,
     `Steps to reproduce\n${input.stepsToReproduce}`,
-  ].join("\n\n")
+    input.attachments ? `Attachments\n${input.attachments}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 export function parseCreateRequestInput(input: unknown): CreateRequestInput {
@@ -57,6 +61,10 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
   const stepsToReproduce =
     "stepsToReproduce" in value && typeof value.stepsToReproduce === "string"
       ? value.stepsToReproduce.trim()
+      : ""
+  const attachments =
+    "attachments" in value && typeof value.attachments === "string"
+      ? value.attachments.trim()
       : ""
   const severityLabel =
     "severity" in value && typeof value.severity === "string"
@@ -91,6 +99,11 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
       fields[key] = msg
     }
   }
+  if (attachments.length > 5000) {
+    const msg = "Attachments must be at most 5000 characters"
+    issues.push(msg)
+    fields.attachments = msg
+  }
 
   const severity = SEVERITY_PRIORITY[severityLabel]
   if (!severity) {
@@ -107,6 +120,7 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
       expectedBehaviour,
       currentBehaviour,
       stepsToReproduce,
+      attachments,
     }),
     severity,
   }
