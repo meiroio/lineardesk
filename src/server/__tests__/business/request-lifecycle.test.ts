@@ -35,6 +35,12 @@ describe("customer request business flows", () => {
     const created = (await createResponse.json()) as {
       request: { id: string; linearIssueId: string }
     }
+    expect(created.request).toMatchObject({
+      requesterEmail: "ada@example.com",
+      organizationId: "org-acme",
+      linearTeamId: "team-product",
+      source: "web",
+    })
 
     expect(world.linearCreateInputs).toEqual([
       expect.objectContaining({
@@ -51,13 +57,9 @@ describe("customer request business flows", () => {
       requests: [
         {
           id: created.request.id,
-          requesterEmail: "ada@example.com",
-          organizationId: "org-acme",
           title: "Export CSV fails",
-          linearTeamId: "team-product",
           severity: 2,
           linearStateType: "triage",
-          source: "web",
         },
       ],
     })
@@ -139,7 +141,12 @@ describe("customer request business flows", () => {
 
     const betaListResponse = await world.get("/requests", betaSession)
     expect(betaListResponse.status).toBe(200)
-    await expect(betaListResponse.json()).resolves.toEqual({ requests: [] })
+    await expect(betaListResponse.json()).resolves.toEqual({
+      requests: [],
+      total: 0,
+      page: 0,
+      pageSize: 20,
+    })
 
     const betaDetailResponse = await world.get(
       `/requests/${created.request.id}`,
@@ -404,13 +411,15 @@ describe("customer request business flows", () => {
       requests: [
         {
           title: "CSV export fails",
-          requesterEmail: "ada@example.com",
-          organizationId: "org-acme",
-          source: "slack",
-          slackChannelId: "C1",
-          slackMessageTs: "123.45",
         },
       ],
+    })
+    expect([...world.requests.values()][0]).toMatchObject({
+      requesterEmail: "ada@example.com",
+      organizationId: "org-acme",
+      source: "slack",
+      slackChannelId: "C1",
+      slackMessageTs: "123.45",
     })
   })
 })

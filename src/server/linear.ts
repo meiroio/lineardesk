@@ -5,6 +5,7 @@ import type {
   CloseIssueInput,
   CreateIssueCommentInput,
   CreateHelpdeskIssueInput,
+  DownloadAssetResult,
   IssueStateSnapshot,
   LinearGateway,
   LinearIssueCommentSnapshot,
@@ -31,6 +32,12 @@ type IssueLabelCandidate = {
 
 type LinearGatewayConfig = AppConfig["linear"]
 type LinearClientProvider = () => Promise<LinearClient>
+type LinearAccessTokenProvider = () => Promise<string>
+type LinearConnection = {
+  client: LinearClient
+  accessToken: string
+  expiresAt: number
+}
 type LinearTeamsResponse = {
   teams: {
     nodes: Array<{
@@ -39,6 +46,23 @@ type LinearTeamsResponse = {
       displayName: string
       retiredAt: string | null
     }>
+  }
+}
+type LinearCommentAuthor = {
+  displayName?: string | null
+  name?: string | null
+}
+type LinearCommentData = {
+  id: string
+  body: string
+  createdAt: Date | string
+  botActor?: { userDisplayName?: string | null; name?: string | null } | null
+  user?: LinearCommentAuthor | PromiseLike<LinearCommentAuthor | null> | null
+}
+type LinearCommentsResponse = {
+  comments: {
+    nodes: LinearCommentData[]
+    pageInfo: { hasNextPage: boolean; endCursor: string | null }
   }
 }
 type LinearIssueCreateInput = {
@@ -53,6 +77,7 @@ type LinearIssueCreateInput = {
 const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
 const LINEAR_OAUTH_SCOPE = "read,write"
 const LINEAR_TOKEN_REFRESH_BUFFER_MS = 60_000
+const MAX_LINEAR_IMAGE_BYTES = 20 * 1024 * 1024
 
 export function selectWorkflowStateByName<T extends WorkflowStateCandidate>(
   states: readonly T[],
@@ -144,27 +169,32 @@ export function buildRequesterReplyCommentBody(input: {
 export function createLinearGateway(
   config: LinearGatewayConfig
 ): LinearGateway {
-  return new LinearSdkGateway(createLinearClientProvider(config), config)
+  const getConnection = createLinearConnectionProvider(config)
+  return new LinearSdkGateway(
+    async () => (await getConnection()).client,
+    async () => (await getConnection()).accessToken,
+    config
+  )
 }
 
-function createLinearClientProvider(
+function createLinearConnectionProvider(
   config: LinearGatewayConfig
-): LinearClientProvider {
-  let current: { client: LinearClient; expiresAt: number } | null = null
-  let pending: Promise<LinearClient> | null = null
+): () => Promise<LinearConnection> {
+  let current: LinearConnection | null = null
+  let pending: Promise<LinearConnection> | null = null
 
   return async () => {
     if (
       current &&
       Date.now() < current.expiresAt - LINEAR_TOKEN_REFRESH_BUFFER_MS
     ) {
-      return current.client
+      return current
     }
 
     pending ??= requestLinearClient(config)
       .then((next) => {
         current = next
-        return next.client
+        return next
       })
       .finally(() => {
         pending = null
@@ -206,6 +236,7 @@ async function requestLinearClient(config: LinearGatewayConfig) {
 
   return {
     client: new LinearClient({ accessToken: payload.access_token }),
+    accessToken: payload.access_token,
     expiresAt: Date.now() + payload.expires_in * 1000,
   }
 }
@@ -213,6 +244,7 @@ async function requestLinearClient(config: LinearGatewayConfig) {
 class LinearSdkGateway implements LinearGateway {
   constructor(
     private readonly getClient: LinearClientProvider,
+    private readonly getAccessToken: LinearAccessTokenProvider,
     private readonly config: LinearGatewayConfig
   ) {}
 
@@ -288,17 +320,60 @@ class LinearSdkGateway implements LinearGateway {
     issueId: string
   ): Promise<LinearIssueCommentSnapshot[]> {
     const client = await this.getClient()
-    const comments = await client.comments({
-      filter: { issue: { id: { eq: issueId } } },
-      first: 50,
-    })
-    const snapshots = await Promise.all(
-      comments.nodes.map((comment) => this.toIssueCommentSnapshot(comment))
-    )
+    const snapshots: LinearIssueCommentSnapshot[] = []
+    let after: string | null = null
+    do {
+      const { comments }: LinearCommentsResponse = await client.client.request<
+        LinearCommentsResponse,
+        { issueId: string; after: string | null }
+      >(
+        `query LinearDeskComments($issueId: ID!, $after: String) {
+          comments(first: 50, after: $after, filter: { issue: { id: { eq: $issueId } } }) {
+            nodes {
+              id
+              body
+              createdAt
+              botActor { userDisplayName name }
+              user { displayName name }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`,
+        { issueId, after }
+      )
+      snapshots.push(
+        ...(await Promise.all(
+          comments.nodes.map((comment) => this.toIssueCommentSnapshot(comment))
+        ))
+      )
+      after = comments.pageInfo.hasNextPage ? comments.pageInfo.endCursor : null
+    } while (after)
 
     return snapshots.sort(
       (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
     )
+  }
+
+  async getIssueCommentBody(
+    issueId: string,
+    commentId: string
+  ): Promise<string | null> {
+    const client = await this.getClient()
+    const { comments } = await client.client.request<
+      { comments: { nodes: Array<{ body: string }> } },
+      { issueId: string; commentId: string }
+    >(
+      `query LinearDeskCommentBody($issueId: ID!, $commentId: ID!) {
+        comments(first: 1, filter: {
+          id: { eq: $commentId }
+          issue: { id: { eq: $issueId } }
+        }) {
+          nodes { body }
+        }
+      }`,
+      { issueId, commentId }
+    )
+    return comments.nodes[0]?.body ?? null
   }
 
   async createIssueComment(
@@ -355,6 +430,41 @@ class LinearSdkGateway implements LinearGateway {
     return { assetUrl: uploadFile.assetUrl }
   }
 
+  async downloadAsset(assetUrl: string): Promise<DownloadAssetResult> {
+    const url = new URL(assetUrl)
+    if (url.protocol !== "https:" || url.hostname !== "uploads.linear.app") {
+      throw new Error("Linear asset URL is not allowed")
+    }
+
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${await this.getAccessToken()}` },
+    })
+    if (!response.ok) {
+      throw new Error(
+        `Linear asset download failed with status ${response.status}`
+      )
+    }
+
+    const contentType = response.headers.get("content-type") ?? ""
+    if (!contentType.startsWith("image/")) {
+      throw new Error("Linear asset is not an image")
+    }
+    const contentLength = Number(response.headers.get("content-length"))
+    if (contentLength > MAX_LINEAR_IMAGE_BYTES) {
+      throw new Error("Linear asset is larger than the 20 MB limit")
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength > MAX_LINEAR_IMAGE_BYTES) {
+      throw new Error("Linear asset is larger than the 20 MB limit")
+    }
+
+    return {
+      bytes,
+      contentType,
+    }
+  }
+
   async updateIssueFields(input: {
     issueId: string
     title: string
@@ -407,46 +517,37 @@ class LinearSdkGateway implements LinearGateway {
     if (issueIds.length === 0) return []
 
     const client = await this.getClient()
-    const issues = await client.issues({
-      filter: { id: { in: issueIds } },
-      first: 250,
-    })
+    const snapshots: IssueStateSnapshot[] = []
+    for (let offset = 0; offset < issueIds.length; offset += 250) {
+      const { issues } = await client.client.request<
+        { issues: { nodes: IssueStateSnapshot[] } },
+        { issueIds: string[] }
+      >(
+        `query LinearDeskIssueStates($issueIds: [ID!]!) {
+          issues(first: 250, filter: { id: { in: $issueIds } }) {
+            nodes {
+              id
+              identifier
+              url
+              state { id name type }
+            }
+          }
+        }`,
+        { issueIds: issueIds.slice(offset, offset + 250) }
+      )
+      snapshots.push(...issues.nodes)
+    }
 
-    const snapshots = await Promise.all(
-      issues.nodes.map(async (issue) => {
-        const state = await issue.state
-        if (!state) return null
-
-        return {
-          id: issue.id,
-          identifier: issue.identifier,
-          url: issue.url,
-          state: { id: state.id, name: state.name, type: state.type },
-        }
-      })
-    )
-
-    return snapshots.filter(
-      (snapshot): snapshot is IssueStateSnapshot => snapshot !== null
-    )
+    return snapshots
   }
 
-  private async toIssueCommentSnapshot(comment: {
-    id: string
-    body: string
-    createdAt: Date
-    botActor?: { userDisplayName?: string | null; name?: string | null } | null
-    user?: PromiseLike<{
-      displayName?: string | null
-      name?: string | null
-    } | null>
-  }): Promise<LinearIssueCommentSnapshot> {
-    // Prefer the inline botActor (no extra request); only resolve the user
-    // relation — an additional Linear round-trip per comment — when needed.
+  private async toIssueCommentSnapshot(
+    comment: LinearCommentData
+  ): Promise<LinearIssueCommentSnapshot> {
     let authorName =
       comment.botActor?.userDisplayName || comment.botActor?.name || null
 
-    if (!authorName && comment.user) {
+    if (!authorName) {
       try {
         const user = await comment.user
         authorName = user?.displayName || user?.name || null
@@ -459,7 +560,7 @@ class LinearSdkGateway implements LinearGateway {
       id: comment.id,
       body: comment.body,
       authorName: authorName || "Linear",
-      createdAt: comment.createdAt,
+      createdAt: new Date(comment.createdAt),
     }
   }
 

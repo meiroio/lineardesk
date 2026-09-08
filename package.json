@@ -16,8 +16,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "bun node_modules/.bin/drizzle-kit generate",
+    "db:migrate": "bun node_modules/.bin/drizzle-kit migrate",
     "db:migrate:prod": "bun run scripts/migrate-prod.ts",
     "org:seed": "bun run scripts/seed-customer-org.ts"
   },

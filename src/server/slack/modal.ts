@@ -12,6 +12,7 @@ export type TicketModalPrefill = {
   expectedBehaviour?: string
   currentBehaviour?: string
   stepsToReproduce?: string
+  severity?: "urgent" | "high" | "medium" | "low"
 }
 
 const SEVERITY_OPTIONS = [
@@ -66,6 +67,9 @@ export function buildTicketModal(input: {
   privateMetadata: TicketModalMeta
 }) {
   const prefill = input.prefill ?? {}
+  const severity =
+    SEVERITY_OPTIONS.find((option) => option.value === prefill.severity) ??
+    SEVERITY_OPTIONS[2]
   return {
     type: "modal",
     callback_id: "slack_ticket_submit",
@@ -93,8 +97,8 @@ export function buildTicketModal(input: {
           type: "static_select",
           action_id: "severity_input",
           initial_option: {
-            text: { type: "plain_text", text: "Medium" },
-            value: "medium",
+            text: { type: "plain_text", text: severity.text },
+            value: severity.value,
           },
           options: SEVERITY_OPTIONS.map((o) => ({
             text: { type: "plain_text", text: o.text },

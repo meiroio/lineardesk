@@ -22,6 +22,7 @@ describe("parseTicketDraft", () => {
         expectedBehaviour: "export works",
         currentBehaviour: "500 error",
         stepsToReproduce: "click export",
+        severity: "urgent",
       })
     )
     expect(draft).toEqual({
@@ -29,6 +30,7 @@ describe("parseTicketDraft", () => {
       expectedBehaviour: "export works",
       currentBehaviour: "500 error",
       stepsToReproduce: "click export",
+      severity: "urgent",
     })
   })
 
@@ -38,6 +40,7 @@ describe("parseTicketDraft", () => {
       expectedBehaviour: "",
       currentBehaviour: "",
       stepsToReproduce: "",
+      severity: "medium",
     })
   })
 

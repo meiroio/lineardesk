@@ -1,4 +1,5 @@
 .git
+.delta
 .tanstack
 node_modules
 drizzle

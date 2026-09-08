@@ -41,7 +41,7 @@ export type HelpdeskApiClient = {
     resolution: RequestResolution
   ) => Promise<{ request: PortalRequest }>
   fetchRequest: (id: string) => Promise<PortalRequest>
-  fetchRequests: () => Promise<PortalRequest[]>
+  fetchRequests: typeof fetchRequests
   fetchTeams: () => Promise<LinearTeamsResponse>
   updateRequest: (
     id: string,

@@ -18,8 +18,6 @@ ENV PORT=3000
 ENV HOST=0.0.0.0
 
 COPY --from=build /app/.output ./.output
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/node_modules ./node_modules
 
 EXPOSE 3000
 CMD ["bun", ".output/server/index.mjs"]

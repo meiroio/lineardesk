@@ -52,8 +52,33 @@ export const PortalRequestModel = t.Object({
   comments: t.Optional(t.Array(PortalRequestCommentModel)),
 })
 
+export const PortalRequestSummaryModel = t.Pick(PortalRequestModel, [
+  "id",
+  "title",
+  "linearIdentifier",
+  "linearStateName",
+  "linearStateType",
+  "severity",
+  "createdAt",
+  "updatedAt",
+])
+
+export const RequestListQueryModel = t.Object({
+  page: t.Optional(
+    t.Numeric({ minimum: 0, maximum: 1_000_000, multipleOf: 1 })
+  ),
+  pageSize: t.Optional(t.Numeric({ minimum: 1, maximum: 100, multipleOf: 1 })),
+  status: t.Optional(
+    t.Union([t.Literal("active"), t.Literal("done"), t.Literal("all")])
+  ),
+  severity: t.Optional(t.String({ pattern: "^[1-4](,[1-4]){0,3}$" })),
+})
+
 export const PortalRequestListResponseModel = t.Object({
-  requests: t.Array(PortalRequestModel),
+  requests: t.Array(PortalRequestSummaryModel),
+  total: t.Number(),
+  page: t.Number(),
+  pageSize: t.Number(),
 })
 
 export const PortalRequestResponseModel = t.Object({
@@ -144,6 +169,10 @@ export const SlackEventsResponseModel = t.Union([
 ])
 
 export type PortalRequest = typeof PortalRequestModel.static
+export type PortalRequestSummary = typeof PortalRequestSummaryModel.static
+export type PortalRequestListResponse =
+  typeof PortalRequestListResponseModel.static
+export type { RequestListQuery } from "../types"
 export type PortalRequestComment = typeof PortalRequestCommentModel.static
 export type LinearTeam = typeof LinearTeamModel.static
 export type LinearTeamsResponse = typeof LinearTeamsResponseModel.static

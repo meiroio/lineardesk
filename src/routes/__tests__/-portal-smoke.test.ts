@@ -13,7 +13,8 @@ import { createElement } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AppRouterContext } from "@/lib/app-context"
-import type { PortalRequest } from "@/lib/helpdesk-api"
+import { requestKeys } from "@/lib/helpdesk-api"
+import type { PortalRequest, RequestListQuery } from "@/lib/helpdesk-api"
 import { getRouter } from "@/router"
 
 vi.mock("../__root", async () => {
@@ -30,6 +31,7 @@ vi.mock("../__root", async () => {
 const NOW = "2026-01-01T00:00:00.000Z"
 
 describe("portal route smoke", () => {
+  let context: AppRouterContext
   let requests: PortalRequest[]
   let apiPost: ReturnType<typeof vi.fn>
   let fetchRequest: ReturnType<typeof vi.fn>
@@ -54,13 +56,50 @@ describe("portal route smoke", () => {
     ]
 
     requirePortalAuth = vi.fn(async () => undefined)
-    fetchRequests = vi.fn(async () => requests)
+    fetchRequests = vi.fn(async (query: RequestListQuery) => ({
+      requests: requests
+        .slice(query.page * query.pageSize, (query.page + 1) * query.pageSize)
+        .map(
+          ({
+            id,
+            title,
+            linearIdentifier,
+            linearStateName,
+            linearStateType,
+            severity,
+            updatedAt,
+            createdAt,
+          }) => ({
+            id,
+            title,
+            linearIdentifier,
+            linearStateName,
+            linearStateType,
+            severity,
+            updatedAt,
+            createdAt,
+          })
+        ),
+      total: requests.length,
+      page: query.page,
+      pageSize: query.pageSize,
+    }))
     fetchRequest = vi.fn(async (id: string) => {
       const request = requests.find((item) => item.id === id)
       if (!request) throw new Error("not_found")
       return { ...request, comments: [] }
     })
     apiPost = vi.fn(async (path: string, body: unknown) => {
+      if (path.endsWith("/comments")) {
+        return {
+          comment: {
+            id: "comment-1",
+            body: (body as { body: string }).body,
+            authorName: "LinearDesk",
+            createdAt: NOW,
+          },
+        }
+      }
       if (path !== "/api/requests") {
         throw new Error(`Unexpected API path ${path}`)
       }
@@ -125,15 +164,8 @@ describe("portal route smoke", () => {
       assetUrl: `https://uploads.linear.app/${file.name}`,
       filename: file.name,
     }))
-  })
 
-  afterEach(() => {
-    cleanup()
-    vi.clearAllMocks()
-  })
-
-  it("loads the dashboard, submits a request, and lands on the detail page", async () => {
-    renderPortal("/", {
+    context = {
       queryClient: new QueryClient({
         defaultOptions: {
           queries: { refetchOnWindowFocus: false, retry: false },
@@ -167,12 +199,28 @@ describe("portal route smoke", () => {
       },
       requirePortalAuth:
         requirePortalAuth as AppRouterContext["requirePortalAuth"],
-    })
+    }
+  })
+
+  afterEach(() => {
+    cleanup()
+    context.queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it("loads the dashboard, submits a request, and lands on the detail page", async () => {
+    renderPortal("/", context)
 
     expect(
       await screen.findByRole("heading", { name: "Requests" })
     ).toBeTruthy()
     expect(await screen.findByText("Existing CSV export failure")).toBeTruthy()
+    expect(fetchRequests).toHaveBeenCalledWith({
+      page: 0,
+      pageSize: 10,
+      status: "active",
+      severity: [],
+    })
 
     fireEvent.click(screen.getByRole("link", { name: /new request/i }))
     expect(
@@ -234,11 +282,42 @@ describe("portal route smoke", () => {
       })
     ).toBeTruthy()
     expect(screen.getAllByText("PRD-102")).toHaveLength(2)
+    await waitFor(() => expect(fetchRequest).toHaveBeenCalledWith("request-2"))
+    expect(await screen.findByText("No Linear comments yet.")).toBeTruthy()
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()
-    expect(screen.getByRole("img", { name: "export-error.png" })).toBeTruthy()
+    expect(
+      screen.getByRole("img", { name: "export-error.png" }).getAttribute("src")
+    ).toBe(
+      "/api/requests/request-2/assets?url=https%3A%2F%2Fuploads.linear.app%2Fexport-error.png"
+    )
+
+    fireEvent.change(screen.getByLabelText("Reply"), {
+      target: { value: "More evidence" },
+    })
+    fireEvent.drop(screen.getByText("Drop screenshots here or"), {
+      dataTransfer: {
+        files: [new File(["screenshot"], "reply.png", { type: "image/png" })],
+      },
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText<HTMLTextAreaElement>("Reply").value
+      ).toContain("![reply.png](https://uploads.linear.app/reply.png)")
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Post reply" }))
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(
+        "/api/requests/request-2/comments",
+        expect.objectContaining({
+          body: expect.stringContaining(
+            "![reply.png](https://uploads.linear.app/reply.png)"
+          ),
+        })
+      )
+    })
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
-    fireEvent.drop(screen.getByText("Drop screenshots here or"), {
+    fireEvent.drop(screen.getAllByText("Drop screenshots here or")[0], {
       dataTransfer: {
         files: [
           new File(["screenshot"], "updated-view.png", { type: "image/png" }),
@@ -273,6 +352,146 @@ describe("portal route smoke", () => {
     })
     expect(screen.getByRole("combobox", { name: "Severity: Low" })).toBeTruthy()
     expect(requirePortalAuth).toHaveBeenCalled()
+  })
+
+  it("requests server pages and resets the page when either filter changes", async () => {
+    requests = Array.from({ length: 11 }, (_, index) =>
+      makeRequest({
+        id: `request-${index + 1}`,
+        title: `Request ${index + 1}`,
+        linearIdentifier: `BAS-${index + 1}`,
+      })
+    )
+    renderPortal("/", context)
+
+    expect(await screen.findByText("Showing 1–10 of 11")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    expect(await screen.findByText("Showing 11–11 of 11")).toBeTruthy()
+    expect(screen.getByText("Request 11")).toBeTruthy()
+    expect(screen.queryByText("Request 1")).toBeNull()
+    expect(fetchRequests).toHaveBeenLastCalledWith({
+      page: 1,
+      pageSize: 10,
+      status: "active",
+      severity: [],
+    })
+
+    requests = requests.map((request) => ({
+      ...request,
+      linearStateName: "Done",
+      linearStateType: "completed",
+    }))
+    fireEvent.click(screen.getByRole("radio", { name: "Done" }))
+    await waitFor(() =>
+      expect(fetchRequests).toHaveBeenLastCalledWith({
+        page: 0,
+        pageSize: 10,
+        status: "done",
+        severity: [],
+      })
+    )
+    expect(await screen.findByText("Showing 1–10 of 11")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    expect(await screen.findByText("Showing 11–11 of 11")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "High" }))
+    await waitFor(() =>
+      expect(fetchRequests).toHaveBeenLastCalledWith({
+        page: 0,
+        pageSize: 10,
+        status: "done",
+        severity: [2],
+      })
+    )
+    expect(await screen.findByText("Showing 1–10 of 11")).toBeTruthy()
+
+    const listQueries = context.queryClient.getQueryCache().findAll({
+      queryKey: requestKeys.list,
+    })
+    expect(listQueries).toHaveLength(5)
+    await context.queryClient.invalidateQueries({
+      queryKey: requestKeys.list,
+      refetchType: "none",
+    })
+    expect(listQueries.every((query) => query.state.isInvalidated)).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    expect(await screen.findByText("Showing 11–11 of 11")).toBeTruthy()
+    requests = requests.slice(0, 10)
+    await context.queryClient.invalidateQueries({ queryKey: requestKeys.list })
+    await waitFor(() =>
+      expect(fetchRequests).toHaveBeenLastCalledWith({
+        page: 0,
+        pageSize: 10,
+        status: "done",
+        severity: [2],
+      })
+    )
+    expect(await screen.findByText("Request 1")).toBeTruthy()
+    expect(screen.queryByText("Request 11")).toBeNull()
+  })
+
+  it("reuses a completed hover prefetch through focus and detail navigation", async () => {
+    renderPortal("/", context)
+    const link = await screen.findByRole("link", {
+      name: /Existing CSV export failure/,
+    })
+    fireEvent.mouseEnter(link)
+    await waitFor(() =>
+      expect(
+        context.queryClient.getQueryData<PortalRequest>(
+          requestKeys.detail("request-1")
+        )?.comments
+      ).toEqual([])
+    )
+    fireEvent.focus(link)
+    fireEvent.click(link)
+    expect(
+      await screen.findByRole("heading", {
+        name: "Existing CSV export failure",
+      })
+    ).toBeTruthy()
+    expect(fetchRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it("loads detail content rather than treating list summaries as full records", async () => {
+    renderPortal("/", context)
+    const link = await screen.findByRole("link", {
+      name: /Existing CSV export failure/,
+    })
+    let finish!: (request: PortalRequest) => void
+    fetchRequest.mockReturnValueOnce(
+      new Promise<PortalRequest>((resolve) => {
+        finish = resolve
+      })
+    )
+    fireEvent.click(link)
+    expect(
+      await screen.findByRole("status", { name: "Loading request" })
+    ).toBeTruthy()
+    finish({ ...requests[0], comments: [] })
+    expect(await screen.findByText(/The CSV export downloads/)).toBeTruthy()
+  })
+
+  it("loads comment attachments lazily with their owning comment ID", async () => {
+    fetchRequest.mockResolvedValueOnce({
+      ...requests[0],
+      comments: [
+        {
+          id: "comment-1",
+          body: "![comment screenshot](https://uploads.linear.app/comment.png)",
+          authorName: "Ada",
+          createdAt: NOW,
+        },
+      ],
+    })
+    renderPortal("/requests/request-1", context)
+    const screenshot = await screen.findByRole("img", {
+      name: "comment screenshot",
+    })
+    expect(screenshot.getAttribute("loading")).toBe("lazy")
+    expect(screenshot.getAttribute("src")).toBe(
+      "/api/requests/request-1/assets?url=https%3A%2F%2Fuploads.linear.app%2Fcomment.png&commentId=comment-1"
+    )
   })
 })
 

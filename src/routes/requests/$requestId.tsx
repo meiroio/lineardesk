@@ -7,7 +7,7 @@ import { useEffect, useState } from "react"
 import { DescriptionBody } from "@/components/description-body"
 import { ImageDropzone } from "@/components/image-dropzone"
 import { PageShell } from "@/components/page-shell"
-import { SeveritySelect } from "@/components/severity-badge"
+import { SeveritySelect } from "@/components/severity-select"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -47,6 +47,7 @@ function RequestDetail() {
   const { requestId } = Route.useParams()
   const [replyBody, setReplyBody] = useState("")
   const [replyError, setReplyError] = useState<string | null>(null)
+  const [replyUploadError, setReplyUploadError] = useState<string | null>(null)
   const [replying, setReplying] = useState(false)
   const [closing, setClosing] = useState(false)
   const [closeBusy, setCloseBusy] = useState(false)
@@ -65,10 +66,12 @@ function RequestDetail() {
     setEditAttachments,
     setEditUploadError
   )
+  const replyUpload = usePasteImageUpload(
+    api.uploadImage,
+    setReplyBody,
+    setReplyUploadError
+  )
 
-  // The record (title, description, severity, dates, status) already arrived
-  // with the list, so seed it as placeholder data: the page renders instantly
-  // and only the comments (a Linear API call) stream in afterwards.
   const {
     data: request,
     status: queryStatus,
@@ -76,11 +79,7 @@ function RequestDetail() {
   } = useQuery({
     queryKey: requestKeys.detail(requestId),
     queryFn: () => api.fetchRequest(requestId),
-    placeholderData: () =>
-      queryClient
-        .getQueryData<PortalRequest[]>(requestKeys.list)
-        ?.find((item) => item.id === requestId),
-    staleTime: 0,
+    staleTime: LIVE_REFETCH_INTERVAL_MS,
     // Poll while open so webhook-driven status changes (and new Linear
     // comments) surface without a reload; stop once terminal to avoid
     // needless Linear API calls. Focus refetch is off globally — enable here.
@@ -111,6 +110,7 @@ function RequestDetail() {
 
     setReplying(true)
     setReplyError(null)
+    setReplyUploadError(null)
 
     try {
       await api.apiPost(`/api/requests/${requestId}/comments`, { body })
@@ -406,7 +406,10 @@ function RequestDetail() {
                   </div>
                 </form>
               ) : (
-                <DescriptionBody text={request.description} />
+                <DescriptionBody
+                  text={request.description}
+                  requestId={requestId}
+                />
               )}
             </CardContent>
           </Card>
@@ -454,9 +457,11 @@ function RequestDetail() {
                             {formatDateTime(comment.createdAt)}
                           </time>
                         </div>
-                        <p className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
-                          {comment.body}
-                        </p>
+                        <DescriptionBody
+                          text={comment.body}
+                          requestId={requestId}
+                          commentId={comment.id}
+                        />
                       </div>
                     </li>
                   ))}
@@ -480,27 +485,45 @@ function RequestDetail() {
                   name="body"
                   value={replyBody}
                   onChange={(event) => setReplyBody(event.target.value)}
+                  onPaste={replyUpload.onPaste}
                   minLength={1}
                   maxLength={5000}
                   required
                   rows={4}
-                  aria-invalid={replyError ? true : undefined}
+                  aria-invalid={
+                    replyError || replyUploadError ? true : undefined
+                  }
                   aria-describedby={
-                    replyError ? "request-reply-error" : undefined
+                    replyError || replyUploadError
+                      ? "request-reply-error"
+                      : undefined
                   }
                   placeholder="Add a reply..."
                 />
-                {replyError ? (
+                <ImageDropzone
+                  id="reply-attachments"
+                  imageUpload={replyUpload}
+                  label="Reply attachments"
+                  uploadLabel="Upload reply images"
+                />
+                {replyUploadError || replyError ? (
                   <p
                     id="request-reply-error"
                     className="text-sm text-destructive"
                   >
-                    {replyError}
+                    {replyUploadError ?? replyError}
                   </p>
                 ) : null}
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={replying}>
-                    {replying ? "Posting..." : "Post reply"}
+                  <Button
+                    type="submit"
+                    disabled={replying || replyUpload.pending > 0}
+                  >
+                    {replying
+                      ? "Posting..."
+                      : replyUpload.pending > 0
+                        ? "Uploading..."
+                        : "Post reply"}
                   </Button>
                 </div>
               </form>

@@ -171,12 +171,33 @@ export function makeBusinessWorld() {
     },
     getUserIdByEmail: async (email: string) =>
       userIdsByEmail.get(email) ?? null,
-    listRequestsForOrganization: async (organizationId: string) =>
-      Array.from(requests.values())
+    listRequestsForOrganization: async (organizationId, query) => {
+      const matching = Array.from(requests.values())
         .filter((request) => request.organizationId === organizationId)
+        .filter((request) => {
+          const done = ["completed", "canceled", "duplicate"].includes(
+            request.linearStateType
+          )
+          return (
+            (query.status === "all" || done === (query.status === "done")) &&
+            (!query.severity.length ||
+              (request.severity !== null &&
+                query.severity.includes(request.severity)))
+          )
+        })
         .sort(
-          (left, right) => right.createdAt.getTime() - left.createdAt.getTime()
+          (left, right) =>
+            right.createdAt.getTime() - left.createdAt.getTime() ||
+            right.id.localeCompare(left.id)
+        )
+      return {
+        requests: matching.slice(
+          query.page * query.pageSize,
+          (query.page + 1) * query.pageSize
         ),
+        total: matching.length,
+      }
+    },
     getRequestForOrganization: async (id: string, organizationId: string) => {
       const request = requests.get(id)
       return request?.organizationId === organizationId ? request : null
@@ -193,15 +214,32 @@ export function makeBusinessWorld() {
               request.linearStateType
             )
         )
+        .sort(
+          (left, right) =>
+            left.lastLinearSyncedAt.getTime() -
+              right.lastLinearSyncedAt.getTime() ||
+            left.id.localeCompare(right.id)
+        )
         .slice(0, limit),
-    hasProcessedWebhookEvent: async (eventKey: string) =>
-      webhookEvents.has(eventKey),
-    recordWebhookEvent: async (eventKey: string) => {
-      webhookEvents.add(eventKey)
+    markRequestsSynced: async (issueIds, checkedAt) => {
+      for (const request of requests.values()) {
+        if (issueIds.includes(request.linearIssueId))
+          request.lastLinearSyncedAt = checkedAt
+      }
     },
-    hasProcessedSlackEvent: async (eventId: string) => slackEvents.has(eventId),
-    recordSlackEvent: async (eventId: string) => {
+    applyWebhookEvent: async ({ eventKey, snapshot }) => {
+      if (webhookEvents.has(eventKey)) return false
+      webhookEvents.add(eventKey)
+      if (snapshot) await repo.updateRequestFromLinear(snapshot)
+      return true
+    },
+    claimSlackEvent: async (eventId) => {
+      if (slackEvents.has(eventId)) return false
       slackEvents.add(eventId)
+      return true
+    },
+    releaseSlackEvent: async (eventId) => {
+      slackEvents.delete(eventId)
     },
     updateRequestFromLinear: async (snapshot) => {
       const record = Array.from(requests.values()).find(
@@ -287,6 +325,9 @@ export function makeBusinessWorld() {
     },
     listIssueComments: async (issueId: string) =>
       issueComments.get(issueId) ?? [],
+    getIssueCommentBody: async (issueId, commentId) =>
+      issueComments.get(issueId)?.find((comment) => comment.id === commentId)
+        ?.body ?? null,
     listIssueStates: async (
       issueIds: string[]
     ): Promise<IssueStateSnapshot[]> =>
@@ -305,6 +346,10 @@ export function makeBusinessWorld() {
       }),
     uploadAsset: async () => ({
       assetUrl: `https://uploads.linear.app/test-${++assetSequence}.png`,
+    }),
+    downloadAsset: async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "image/png",
     }),
     closeIssue: async (input) => {
       const issue = issues.get(input.issueId)
@@ -405,6 +450,7 @@ export function makeBusinessWorld() {
       expectedBehaviour: "The CSV export downloads successfully.",
       currentBehaviour: "The export returns a 500 error.",
       stepsToReproduce: "Open reports and click Export CSV.",
+      severity: "medium",
     }),
   }
 
@@ -528,7 +574,8 @@ export function makeBusinessWorld() {
     },
     async postSlackEvent(payload: unknown) {
       const body = JSON.stringify(payload)
-      return app.fetch(
+      const pending: Promise<unknown>[] = []
+      const request = Object.assign(
         new Request("http://localhost/api/slack/events", {
           method: "POST",
           headers: {
@@ -536,8 +583,12 @@ export function makeBusinessWorld() {
             ...slackSignatureHeaders(config.slack!.signingSecret, body),
           },
           body,
-        })
+        }),
+        { waitUntil: (work: Promise<unknown>) => pending.push(work) }
       )
+      const response = await app.fetch(request)
+      await Promise.all(pending)
+      return response
     },
   }
 }

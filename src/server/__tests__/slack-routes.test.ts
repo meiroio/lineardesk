@@ -1,12 +1,13 @@
 import { createHmac } from "node:crypto"
 
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createApiApp } from "../app"
 import type {
   AppConfig,
   HelpdeskRepository,
   LinearGateway,
+  OrgAccessRepository,
   RequestRecord,
   SlackGateway,
 } from "../types"
@@ -65,14 +66,17 @@ function makeRepo(): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "user-id"),
-    listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
+    listRequestsForOrganization: vi.fn(async () => ({
+      requests: [makeRecord()],
+      total: 1,
+    })),
     getRequestForOrganization: vi.fn(async () => makeRecord()),
     getRequestByLinearIssueId: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
-    hasProcessedWebhookEvent: vi.fn(async () => false),
-    recordWebhookEvent: vi.fn(async () => undefined),
-    hasProcessedSlackEvent: vi.fn(async () => false),
-    recordSlackEvent: vi.fn(async () => undefined),
+    markRequestsSynced: vi.fn(async () => undefined),
+    applyWebhookEvent: vi.fn(async () => true),
+    claimSlackEvent: vi.fn(async () => true),
+    releaseSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
     updateRequestFields: vi.fn(async () => makeRecord()),
     updateRequestSeverity: vi.fn(async () => makeRecord()),
@@ -86,14 +90,16 @@ function makeLinear(): LinearGateway {
     closeIssue: vi.fn(),
     createIssueComment: vi.fn(),
     listIssueComments: vi.fn(async () => []),
+    getIssueCommentBody: vi.fn(async () => null),
     uploadAsset: vi.fn(),
+    downloadAsset: vi.fn(),
     listIssueStates: vi.fn(async () => []),
     updateIssueFields: vi.fn(),
     updateIssuePriority: vi.fn(),
   }
 }
 
-function makeOrgAccess() {
+function makeOrgAccess(): OrgAccessRepository {
   return {
     findActiveOrganizationForEmail: vi.fn(async () => ({
       organizationId: "org-1",
@@ -141,6 +147,7 @@ function makeGemini() {
       expectedBehaviour: "works",
       currentBehaviour: "500",
       stepsToReproduce: "click export",
+      severity: "urgent" as const,
     })),
   }
 }
@@ -149,7 +156,60 @@ function eventsBody(payloadObj: unknown) {
   return JSON.stringify(payloadObj)
 }
 
+function makeMentionSetup() {
+  const repo = makeRepo()
+  const linear = makeLinear()
+  vi.mocked(linear.createHelpdeskIssue).mockResolvedValue({
+    id: "i",
+    identifier: "BAS-1",
+    url: "https://l/BAS-1",
+    detailsCommentId: null,
+    state: { id: "s", name: "Triage", type: "triage" },
+  })
+  const slack = makeSlack()
+  const gemini = makeGemini()
+  const orgAccess = makeOrgAccess()
+  const app = createApiApp({
+    config: { ...config, slack: { signingSecret: "sign", botToken: "xoxb" } },
+    repo,
+    linear,
+    slack,
+    gemini,
+    orgAccess,
+    auth: { getSession: vi.fn(async () => null) },
+  })
+  const mention = () => {
+    const raw = eventsBody({
+      event_id: "E-retry",
+      event: { type: "app_mention", user: "U1", channel: "C1", ts: "1.1" },
+    })
+    return app.fetch(
+      new Request("http://localhost/api/slack/events", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+  }
+  return { app, mention, repo, linear, slack, gemini, orgAccess }
+}
+
 describe("slack routes", () => {
+  const scheduled: Promise<unknown>[] = []
+  const contextKey = Symbol.for("@vercel/request-context")
+  let previousContext: unknown
+  beforeEach(() => {
+    previousContext = (globalThis as Record<symbol, unknown>)[contextKey]
+    ;(globalThis as Record<symbol, unknown>)[contextKey] = {
+      get: () => ({
+        waitUntil: (work: Promise<unknown>) => scheduled.push(work),
+      }),
+    }
+  })
+  afterEach(async () => {
+    await Promise.all(scheduled.splice(0))
+    ;(globalThis as Record<symbol, unknown>)[contextKey] = previousContext
+  })
   it("does not mount slack routes when slack is unconfigured", async () => {
     const app = createApiApp({
       config,
@@ -273,7 +333,8 @@ describe("slack routes", () => {
     )
     expect(res.status).toBe(200)
     expect(slack.openView).toHaveBeenCalledWith("T2", expect.any(Object))
-    const view = (slack.openView as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    await Promise.all(scheduled)
+    const view = (slack.updateView as ReturnType<typeof vi.fn>).mock.calls[0][1]
     const meta = JSON.parse(view.private_metadata)
     expect(meta.channel).toBe("C1")
     expect(meta.files[0].urlPrivate).toBe("https://files/F1")
@@ -414,11 +475,12 @@ describe("slack routes", () => {
       })
     )
     expect(res.status).toBe(200)
-    expect(slack.openView).toHaveBeenCalledWith(
-      "T3",
+    await Promise.all(scheduled)
+    expect(slack.updateView).toHaveBeenCalledWith(
+      "V1",
       expect.objectContaining({ callback_id: "slack_ticket_submit" })
     )
-    expect(slack.updateView).not.toHaveBeenCalled()
+    expect(slack.getThreadReplies).not.toHaveBeenCalled()
   })
 
   it("view_submission happy path creates a ticket and confirms in-thread", async () => {
@@ -632,6 +694,7 @@ describe("slack routes", () => {
     )
 
     expect(response.status).toBe(200)
+    await Promise.all(scheduled)
     expect(orgAccess.findActiveOrganizationForEmail).toHaveBeenCalledWith(
       "dev@evil.test"
     )
@@ -717,6 +780,9 @@ describe("slack routes", () => {
       expect(repo.createRequest).toHaveBeenCalled()
       expect(slack.postMessage).toHaveBeenCalled()
     })
+    expect(linear.createHelpdeskIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: 1 })
+    )
     const confirmText = (
       slack.postMessage as ReturnType<typeof vi.fn>
     ).mock.calls.at(-1)?.[0]?.text as string
@@ -724,6 +790,7 @@ describe("slack routes", () => {
     // description) so the requester can validate it inline without opening
     // the portal, and still links to the portal edit page.
     expect(confirmText).toContain("CSV export 500s")
+    expect(confirmText).toContain("Severity:* Urgent")
     expect(confirmText).toContain("Expected behaviour")
     expect(confirmText).toContain("https://portal.example/requests/")
   })
@@ -766,6 +833,7 @@ describe("slack routes", () => {
     )
 
     expect(res.status).toBe(200)
+    await Promise.all(scheduled)
     expect(orgAccess.findActiveOrganizationForEmail).toHaveBeenCalledWith(
       "dev@evil.test"
     )
@@ -835,7 +903,7 @@ describe("slack routes", () => {
   it("ignores a duplicate event_id", async () => {
     const slack = makeSlack()
     const repo = makeRepo()
-    repo.hasProcessedSlackEvent = vi.fn(async () => true)
+    repo.claimSlackEvent = vi.fn(async () => false)
     const cfg = {
       ...config,
       slack: { signingSecret: "sign", botToken: "xoxb" },
@@ -864,11 +932,107 @@ describe("slack routes", () => {
     expect(repo.createRequest).not.toHaveBeenCalled()
   })
 
+  it("creates one ticket for concurrent deliveries of the same event", async () => {
+    const { mention, repo, linear, gemini, slack } = makeMentionSetup()
+    const claims = new Set<string>()
+    repo.claimSlackEvent = vi.fn(async (id) => {
+      if (claims.has(id)) return false
+      claims.add(id)
+      return true
+    })
+    const responses = await Promise.all([mention(), mention()])
+    await Promise.all(scheduled)
+    expect(responses.map((response) => response.status)).toEqual([200, 200])
+    expect(linear.createHelpdeskIssue).toHaveBeenCalledTimes(1)
+    expect(gemini.extractTicketDraft).toHaveBeenCalledTimes(1)
+    expect(slack.getUserEmail).toHaveBeenCalledTimes(1)
+    expect(repo.createRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects an unapproved mention before reading the thread or spending AI quota", async () => {
+    const { mention, repo, slack, gemini, orgAccess } = makeMentionSetup()
+    orgAccess.findActiveOrganizationForEmail = vi.fn(async () => null)
+    await mention()
+    await Promise.all(scheduled)
+    expect(slack.getThreadReplies).not.toHaveBeenCalled()
+    expect(gemini.extractTicketDraft).not.toHaveBeenCalled()
+    expect(repo.releaseSlackEvent).toHaveBeenCalledWith("E-retry")
+  })
+
+  it("shows a denial instead of an editable shortcut draft for an unapproved user", async () => {
+    const { app, slack, gemini, orgAccess } = makeMentionSetup()
+    orgAccess.findActiveOrganizationForEmail = vi.fn(async () => null)
+    const raw = `payload=${encodeURIComponent(
+      JSON.stringify({
+        type: "message_action",
+        trigger_id: "T1",
+        user: { id: "U1" },
+        channel: { id: "C1" },
+        message: { ts: "1.1", text: "bug" },
+      })
+    )}`
+    await app.fetch(
+      new Request("http://localhost/api/slack/interactivity", {
+        method: "POST",
+        headers: slackHeaders("sign", raw),
+        body: raw,
+      })
+    )
+    await Promise.all(scheduled)
+    expect(gemini.extractTicketDraft).not.toHaveBeenCalled()
+    expect(slack.getThreadReplies).not.toHaveBeenCalled()
+    const view = vi.mocked(slack.updateView).mock.calls[0][1]
+    expect(view).not.toHaveProperty("submit")
+    expect(JSON.stringify(view)).toContain("not approved")
+  })
+
+  it.each(["draft", "create", "persist", "notify"] as const)(
+    "keeps retry claims once external creation starts: %s failure",
+    async (phase) => {
+      const { mention, repo, linear, slack, gemini } = makeMentionSetup()
+      const failure = new Error("upstream interrupted")
+      if (phase === "draft")
+        gemini.extractTicketDraft.mockRejectedValue(failure)
+      if (phase === "create")
+        vi.mocked(linear.createHelpdeskIssue).mockRejectedValue(failure)
+      if (phase === "persist")
+        vi.mocked(repo.createRequest).mockRejectedValue(failure)
+      if (phase === "notify")
+        vi.mocked(slack.postMessage).mockRejectedValue(failure)
+      await mention()
+      await Promise.all(scheduled)
+      expect(repo.releaseSlackEvent).toHaveBeenCalledTimes(
+        phase === "draft" ? 1 : 0
+      )
+      if (phase === "notify") expect(slack.postMessage).toHaveBeenCalledTimes(1)
+      if (phase === "create" || phase === "persist") {
+        expect(vi.mocked(slack.postMessage).mock.calls[0][0].text).toContain(
+          "Check Linear before retrying"
+        )
+      }
+    }
+  )
+
+  it("warns the requester when only part of the thread was drafted", async () => {
+    const { mention, slack } = makeMentionSetup()
+    vi.mocked(slack.getThreadReplies).mockResolvedValue({
+      messages: [],
+      truncated: true,
+    })
+    await mention()
+    await Promise.all(scheduled)
+    expect(vi.mocked(slack.postMessage).mock.calls[0][0].text).toContain(
+      "Only part of this thread was included"
+    )
+  })
+
   it("hands mention work to the runtime waitUntil when present (serverless)", async () => {
-    const scheduled: Promise<unknown>[] = []
+    const runtimeScheduled: Promise<unknown>[] = []
     const sym = Symbol.for("@vercel/request-context")
     ;(globalThis as Record<symbol, unknown>)[sym] = {
-      get: () => ({ waitUntil: (p: Promise<unknown>) => scheduled.push(p) }),
+      get: () => ({
+        waitUntil: (p: Promise<unknown>) => runtimeScheduled.push(p),
+      }),
     }
     try {
       const slack = makeSlack()
@@ -915,8 +1079,8 @@ describe("slack routes", () => {
       expect(res.status).toBe(200)
       // The post-ack work must be registered with the runtime's waitUntil so
       // the serverless function stays alive to run it — not fire-and-forgotten.
-      expect(scheduled).toHaveLength(1)
-      await Promise.all(scheduled)
+      expect(runtimeScheduled).toHaveLength(1)
+      await Promise.all(runtimeScheduled)
       expect(repo.createRequest).toHaveBeenCalled()
       expect(slack.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -928,7 +1092,8 @@ describe("slack routes", () => {
     }
   })
 
-  it("awaits mention work when no runtime waitUntil is available", async () => {
+  it("acknowledges slow mention work without a runtime waitUntil", async () => {
+    ;(globalThis as Record<symbol, unknown>)[contextKey] = undefined
     const slack = makeSlack()
     slack.getThreadReplies = vi.fn(async () => ({
       messages: [{ user: "U1", text: "export 500s", files: [] }],
@@ -950,12 +1115,21 @@ describe("slack routes", () => {
       slack: { signingSecret: "sign", botToken: "xoxb" },
       gemini: { apiKey: "g", model: "gemini-3.5-flash" },
     }
+    const gemini = makeGemini()
+    let finishDraft!: (
+      draft: Awaited<ReturnType<typeof gemini.extractTicketDraft>>
+    ) => void
+    const originalDraft = await gemini.extractTicketDraft()
+    const draftWork = new Promise<typeof originalDraft>((resolve) => {
+      finishDraft = resolve
+    })
+    gemini.extractTicketDraft = vi.fn(() => draftWork)
     const app = createApiApp({
       config: cfg,
       repo,
       linear,
       slack,
-      gemini: makeGemini(),
+      gemini,
       orgAccess: makeOrgAccess(),
       auth: { getSession: vi.fn(async () => null) },
     })
@@ -971,9 +1145,9 @@ describe("slack routes", () => {
       })
     )
     expect(res.status).toBe(200)
-    // With no waitUntil the route must AWAIT the work, so the ticket already
-    // exists by the time the response resolves (no polling / vi.waitFor).
-    expect(repo.createRequest).toHaveBeenCalled()
+    expect(repo.createRequest).not.toHaveBeenCalled()
+    finishDraft(originalDraft)
+    await vi.waitFor(() => expect(repo.createRequest).toHaveBeenCalled())
     expect(slack.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("https://portal.example/requests/"),

@@ -13,13 +13,14 @@ export type ReconcileOpenRequestsInput = {
 
 // Safety net for missed Linear webhooks: pull the current state of every
 // non-terminal request and correct any that drifted. Only requests whose
-// stored state no longer matches Linear are written, so unchanged requests
-// keep their existing `updatedAt`.
+// stored state no longer matches Linear change `updatedAt`. Every checked row
+// advances its synchronization time so later batches also reach older tickets.
 export async function reconcileOpenRequests({
   repo,
   linear,
   limit,
 }: ReconcileOpenRequestsInput): Promise<ReconcileResult> {
+  const checkedAt = new Date()
   const requests = await repo.listOpenRequests(limit)
   if (requests.length === 0) return { checked: 0, updated: 0 }
 
@@ -43,6 +44,11 @@ export async function reconcileOpenRequests({
     })
     updated += 1
   }
+
+  await repo.markRequestsSynced(
+    requests.map((request) => request.linearIssueId),
+    checkedAt
+  )
 
   return { checked: requests.length, updated }
 }

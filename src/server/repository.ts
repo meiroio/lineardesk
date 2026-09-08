@@ -1,10 +1,21 @@
-import { and, desc, eq, notInArray } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  notInArray,
+  sql,
+} from "drizzle-orm"
 import type { NodePgDatabase } from "drizzle-orm/node-postgres"
 
 import type {
+  ApplyWebhookEventInput,
   CreateRequestRecordInput,
   HelpdeskRepository,
   LinearIssueWebhookSnapshot,
+  RequestListQuery,
   RequestRecord,
 } from "./types"
 import { getDb } from "./db/client"
@@ -70,19 +81,49 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
   }
 
   async listRequestsForOrganization(
-    organizationId: string
-  ): Promise<RequestRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(helpdeskRequests)
-      .where(eq(helpdeskRequests.organizationId, organizationId))
-      .orderBy(desc(helpdeskRequests.createdAt))
-    return rows.map(toRequestRecord)
+    organizationId: string,
+    query: RequestListQuery
+  ) {
+    const terminalStates = ["completed", "canceled", "duplicate"]
+    const where = and(
+      eq(helpdeskRequests.organizationId, organizationId),
+      query.status === "active"
+        ? notInArray(helpdeskRequests.linearStateType, terminalStates)
+        : query.status === "done"
+          ? inArray(helpdeskRequests.linearStateType, terminalStates)
+          : undefined,
+      query.severity.length
+        ? inArray(helpdeskRequests.severity, query.severity)
+        : undefined
+    )
+    const [requests, [summary]] = await Promise.all([
+      this.db
+        .select({
+          id: helpdeskRequests.id,
+          title: helpdeskRequests.title,
+          linearIdentifier: helpdeskRequests.linearIdentifier,
+          linearStateName: helpdeskRequests.linearStateName,
+          linearStateType: helpdeskRequests.linearStateType,
+          severity: helpdeskRequests.severity,
+          createdAt: helpdeskRequests.createdAt,
+          updatedAt: helpdeskRequests.updatedAt,
+        })
+        .from(helpdeskRequests)
+        .where(where)
+        .orderBy(desc(helpdeskRequests.createdAt), desc(helpdeskRequests.id))
+        .limit(query.pageSize)
+        .offset(query.page * query.pageSize),
+      this.db.select({ total: count() }).from(helpdeskRequests).where(where),
+    ])
+    return { requests, total: summary.total }
   }
 
-  async listOpenRequests(limit: number): Promise<RequestRecord[]> {
-    const rows = await this.db
-      .select()
+  async listOpenRequests(limit: number) {
+    return this.db
+      .select({
+        linearIssueId: helpdeskRequests.linearIssueId,
+        linearStateId: helpdeskRequests.linearStateId,
+      })
       .from(helpdeskRequests)
       .where(
         // Terminal states — mirrors TERMINAL_STATUS_TYPES in lib/helpdesk-api.
@@ -92,10 +133,11 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
           "duplicate",
         ])
       )
-      .orderBy(desc(helpdeskRequests.updatedAt))
+      .orderBy(
+        asc(helpdeskRequests.lastLinearSyncedAt),
+        asc(helpdeskRequests.id)
+      )
       .limit(limit)
-
-    return rows.map(toRequestRecord)
   }
 
   async getRequestForOrganization(
@@ -128,38 +170,44 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return row ? toRequestRecord(row) : null
   }
 
-  async hasProcessedWebhookEvent(eventKey: string): Promise<boolean> {
-    const [row] = await this.db
-      .select({ eventKey: linearWebhookEvents.eventKey })
-      .from(linearWebhookEvents)
-      .where(eq(linearWebhookEvents.eventKey, eventKey))
-      .limit(1)
-
-    return Boolean(row)
-  }
-
-  async recordWebhookEvent(
-    eventKey: string,
-    linearIssueId: string | null,
-    rawBodyHash: string
-  ): Promise<void> {
+  async markRequestsSynced(issueIds: string[], checkedAt: Date): Promise<void> {
+    if (!issueIds.length) return
     await this.db
-      .insert(linearWebhookEvents)
-      .values({ eventKey, linearIssueId, rawBodyHash })
+      .update(helpdeskRequests)
+      // A concurrent webhook may already have recorded a later synchronization.
+      .set({
+        lastLinearSyncedAt: sql`greatest(${helpdeskRequests.lastLinearSyncedAt}, ${checkedAt.toISOString()}::timestamptz)`,
+      })
+      .where(inArray(helpdeskRequests.linearIssueId, issueIds))
+  }
+
+  async applyWebhookEvent({
+    snapshot,
+    ...event
+  }: ApplyWebhookEventInput): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const claimed = await tx
+        .insert(linearWebhookEvents)
+        .values(event)
+        .onConflictDoNothing()
+        .returning({ eventKey: linearWebhookEvents.eventKey })
+      if (!claimed.length) return false
+      if (snapshot) await this.updateRequestFromLinear(snapshot, tx)
+      return true
+    })
+  }
+
+  async claimSlackEvent(eventId: string): Promise<boolean> {
+    const [claimed] = await this.db
+      .insert(slackEvents)
+      .values({ eventId })
       .onConflictDoNothing()
+      .returning({ eventId: slackEvents.eventId })
+    return Boolean(claimed)
   }
 
-  async hasProcessedSlackEvent(eventId: string): Promise<boolean> {
-    const rows = await this.db
-      .select({ eventId: slackEvents.eventId })
-      .from(slackEvents)
-      .where(eq(slackEvents.eventId, eventId))
-      .limit(1)
-    return rows.length > 0
-  }
-
-  async recordSlackEvent(eventId: string): Promise<void> {
-    await this.db.insert(slackEvents).values({ eventId }).onConflictDoNothing()
+  async releaseSlackEvent(eventId: string): Promise<void> {
+    await this.db.delete(slackEvents).where(eq(slackEvents.eventId, eventId))
   }
 
   async updateRequestFields(input: {
@@ -196,11 +244,12 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
   }
 
   async updateRequestFromLinear(
-    snapshot: LinearIssueWebhookSnapshot
+    snapshot: LinearIssueWebhookSnapshot,
+    db: Pick<Database, "update"> = this.db
   ): Promise<void> {
     const now = new Date()
 
-    await this.db
+    await db
       .update(helpdeskRequests)
       .set({
         linearIdentifier: snapshot.linearIdentifier,

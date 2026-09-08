@@ -1,12 +1,17 @@
 import type {
   LinearTeamsResponse,
   PortalRequest,
+  PortalRequestListResponse,
+  RequestListQuery,
   UploadImageResponse,
 } from "@/server/api/contracts"
 
 export type {
   PortalRequest,
   PortalRequestComment,
+  PortalRequestSummary,
+  PortalRequestListResponse,
+  RequestListQuery,
   LinearTeam,
   LinearTeamsResponse,
   UploadImageResponse,
@@ -89,6 +94,7 @@ export async function updateRequestSeverity(
 
 export const requestKeys = {
   list: ["requests"] as const,
+  page: (query: RequestListQuery) => ["requests", query] as const,
   detail: (id: string) => ["request", id] as const,
 }
 
@@ -100,9 +106,18 @@ export async function fetchTeams(): Promise<LinearTeamsResponse> {
   return apiGet<LinearTeamsResponse>("/api/teams")
 }
 
-export async function fetchRequests(): Promise<PortalRequest[]> {
-  const data = await apiGet<{ requests: PortalRequest[] }>("/api/requests")
-  return data.requests
+export async function fetchRequests(
+  query: RequestListQuery
+): Promise<PortalRequestListResponse> {
+  const params = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+    status: query.status,
+  })
+  if (query.severity.length > 0) {
+    params.set("severity", query.severity.join(","))
+  }
+  return apiGet<PortalRequestListResponse>(`/api/requests?${params}`)
 }
 
 export async function fetchRequest(id: string): Promise<PortalRequest> {

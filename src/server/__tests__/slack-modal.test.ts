@@ -26,6 +26,7 @@ describe("buildTicketModal", () => {
         expectedBehaviour: "works",
         currentBehaviour: "500",
         stepsToReproduce: "click export",
+        severity: "urgent",
       },
       privateMetadata: meta,
     })
@@ -41,6 +42,9 @@ describe("buildTicketModal", () => {
       "severity",
     ])
     expect(JSON.stringify(view.blocks)).toContain("click export")
+    expect(JSON.stringify(view.blocks)).toContain(
+      '"initial_option":{"text":{"type":"plain_text","text":"Urgent"}'
+    )
     expect(JSON.parse(view.private_metadata).channel).toBe("C1")
   })
 })

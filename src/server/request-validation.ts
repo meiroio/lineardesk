@@ -25,6 +25,10 @@ const SEVERITY_PRIORITY: Record<string, number> = {
   low: 4,
 }
 
+export function severityPriorityOf(value: string): number | undefined {
+  return SEVERITY_PRIORITY[value.trim().toLowerCase()]
+}
+
 export function mergeBugReportSections(input: {
   expectedBehaviour: string
   currentBehaviour: string
@@ -105,14 +109,15 @@ export function parseCreateRequestInput(input: unknown): CreateRequestInput {
     fields.attachments = msg
   }
 
-  const severity = SEVERITY_PRIORITY[severityLabel]
+  const severity = severityPriorityOf(severityLabel)
   if (!severity) {
     const msg = "Severity must be one of: urgent, high, medium, low"
     issues.push(msg)
     fields.severity = msg
   }
 
-  if (issues.length > 0) throw new RequestValidationError(issues, fields)
+  if (issues.length > 0 || !severity)
+    throw new RequestValidationError(issues, fields)
 
   return {
     title,
@@ -135,7 +140,7 @@ export function parseUpdateRequestInput(input: unknown): CreateRequestInput {
 
   const title = read("title")
   const description = read("description")
-  const severity = SEVERITY_PRIORITY[read("severity").toLowerCase()]
+  const severity = severityPriorityOf(read("severity"))
 
   const fields: Record<string, string> = {}
   if (title.length < 3 || title.length > 160)
@@ -144,7 +149,7 @@ export function parseUpdateRequestInput(input: unknown): CreateRequestInput {
     fields.description = "Description is required (max 8000 characters)"
   if (!severity) fields.severity = "Pick a severity"
 
-  if (Object.keys(fields).length > 0)
+  if (Object.keys(fields).length > 0 || !severity)
     throw new RequestValidationError(Object.values(fields), fields)
 
   return { title, description, severity }

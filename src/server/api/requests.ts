@@ -1,5 +1,6 @@
 import { Elysia } from "elysia"
 
+import { markdownImages } from "../../lib/markdown-images"
 import {
   buildRequesterReplyCommentBody,
   getDetailsCommentMarker,
@@ -22,6 +23,7 @@ import {
   PortalRequestCommentResponseModel,
   PortalRequestResponseModel,
   RequestParamsModel,
+  RequestListQueryModel,
   UpdateRequestBodyModel,
   UpdateRequestSeverityBodyModel,
   ValidationErrorResponseModel,
@@ -70,7 +72,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
     )
     .get(
       "/requests",
-      async ({ request, resolveApiDependencies, status }) => {
+      async ({ query, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
         const authorization = await requireAuthorizedSession(
           deps,
@@ -81,14 +83,29 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
         }
         const { session } = authorization
 
-        const requests = await deps.repo.listRequestsForOrganization(
-          session.organizationId
+        const filters = {
+          page: query.page ?? 0,
+          pageSize: query.pageSize ?? 20,
+          status: query.status ?? ("all" as const),
+          severity: query.severity?.split(",").map(Number) ?? [],
+        }
+        const { requests, total } = await deps.repo.listRequestsForOrganization(
+          session.organizationId,
+          filters
         )
         return {
-          requests: requests.map((record) => serializeRequest(record)),
+          requests: requests.map((record) => ({
+            ...record,
+            createdAt: record.createdAt.toISOString(),
+            updatedAt: record.updatedAt.toISOString(),
+          })),
+          total,
+          page: filters.page,
+          pageSize: filters.pageSize,
         }
       },
       {
+        query: RequestListQueryModel,
         response: {
           200: PortalRequestListResponseModel,
           401: ErrorResponseModel,
@@ -204,6 +221,56 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           404: ErrorResponseModel,
           409: ErrorResponseModel,
         },
+      }
+    )
+    .get(
+      "/requests/:id/assets",
+      async ({ params, query, request, resolveApiDependencies, status }) => {
+        const deps = resolveApiDependencies()
+        const authorization = await requireAuthorizedSession(
+          deps,
+          request.headers
+        )
+        if (!authorization.ok) {
+          return status(authorization.status, authorization.body)
+        }
+
+        const record = await deps.repo.getRequestForOrganization(
+          params.id,
+          authorization.session.organizationId
+        )
+        if (!record) return status(404, { error: "not_found" })
+
+        const assetUrl = typeof query.url === "string" ? query.url : ""
+        const descriptionHasAsset = markdownImages(record.description).some(
+          (image) => image.url === assetUrl
+        )
+        const commentBody =
+          !descriptionHasAsset && typeof query.commentId === "string"
+            ? await deps.linear.getIssueCommentBody(
+                record.linearIssueId,
+                query.commentId
+              )
+            : null
+        const commentHasAsset =
+          commentBody !== null &&
+          markdownImages(commentBody).some((image) => image.url === assetUrl)
+        if (!descriptionHasAsset && !commentHasAsset) {
+          return status(404, { error: "not_found" })
+        }
+
+        try {
+          const asset = await deps.linear.downloadAsset(assetUrl)
+          return new Response(asset.bytes as BodyInit, {
+            headers: {
+              "cache-control": "private, max-age=3600",
+              "content-type": asset.contentType,
+              "x-content-type-options": "nosniff",
+            },
+          })
+        } catch {
+          return status(404, { error: "not_found" })
+        }
       }
     )
     .post(

@@ -50,6 +50,13 @@
       "when": 1781971651972,
       "tag": "0006_illegal_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788851333035,
+      "tag": "0007_maintenance_indexes",
+      "breakpoints": true
     }
   ]
 }

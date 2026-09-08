@@ -46,8 +46,8 @@ ways, mentioning being the smoothest:
 | **Mention**  | Type `@LinearDesk` in a thread                 | A thread that already describes the problem — the AI drafts the whole ticket for you                             |
 | **Shortcut** | On a message: **⋯ → Create LinearDesk ticket** | Turning one specific message into a ticket (AI pre-fills the form from the thread; you review before submitting) |
 
-**Mention (`@LinearDesk`)** — the app reads the whole thread (including any
-images), drafts a ticket, creates it, and replies in-thread with the draft so
+**Mention (`@LinearDesk`)** — the app reads the thread text, drafts a ticket,
+attaches supported images, and replies in-thread with the created ticket so
 you can check it at a glance, plus a link to edit the details. No form, no
 clicks. This is the recommended way — use it whenever the conversation already
 explains the issue.
@@ -62,12 +62,15 @@ A few things worth knowing about Slack intake:
   using your Slack email and is visible to approved users from the same
   organization in the portal. If your Slack profile has no email, or the email
   domain is not approved, the app can't file the ticket and will tell you so.
-- **Images come along.** A mention attaches images from the thread; the shortcut
-  attaches images on the selected message. They're added to the Linear issue.
+- **Images come along.** A mention attaches images from the included messages;
+  the shortcut attaches images on the selected message. They're added to the
+  Linear issue; AI drafting uses the message text.
+- **Long threads may be shortened.** The form or confirmation tells you when
+  only part of the thread was included. Review the draft for missing details.
 - **A link back to the Slack thread** is added to the ticket, so the team can
   see the original conversation.
-- **Mentions default to Medium severity** (there's no picker in that flow). If
-  it's more or less urgent, change it later from the portal — see
+- **Mentions infer severity from the conversation.** The confirmation shows the
+  chosen severity. If it is wrong, change it from the portal — see
   [Editing a request](#editing-a-request).
 
 ### Choosing a severity
@@ -130,6 +133,9 @@ Use the **reply** box on the request page to add information — a new clue, an
 answer to a question, another screenshot's context. Your reply is posted as a
 comment on the Linear issue, and the team's replies in Linear show up here under
 **Activity**.
+
+Use **Reply attachments** to add screenshots, or paste an image directly into
+the reply. Images in portal and Linear comments are shown in the Activity feed.
 
 ### Editing a request
 

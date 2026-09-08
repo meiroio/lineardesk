@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   boolean,
   index,
@@ -219,9 +220,17 @@ export const helpdeskRequests = pgTable(
   },
   (table) => [
     index("helpdesk_requests_requester_user_id_idx").on(table.requesterUserId),
-    index("helpdesk_requests_organization_id_idx").on(table.organizationId),
+    index("helpdesk_requests_organization_created_idx").on(
+      table.organizationId,
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst()
+    ),
+    index("helpdesk_requests_open_sync_idx")
+      .on(table.lastLinearSyncedAt, table.id)
+      .where(
+        sql`${table.linearStateType} not in ('completed', 'canceled', 'duplicate')`
+      ),
     index("helpdesk_requests_requester_email_idx").on(table.requesterEmail),
-    index("helpdesk_requests_linear_issue_id_idx").on(table.linearIssueId),
     index("helpdesk_requests_linear_details_comment_id_idx").on(
       table.linearDetailsCommentId
     ),

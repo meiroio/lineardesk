@@ -129,6 +129,11 @@ export type UploadAssetResult = {
   assetUrl: string
 }
 
+export type DownloadAssetResult = {
+  bytes: Uint8Array
+  contentType: string
+}
+
 export type CloseIssueResolution = "resolved" | "canceled"
 
 export type CloseIssueInput = {
@@ -146,8 +151,13 @@ export type LinearGateway = {
     input: CreateIssueCommentInput
   ) => Promise<LinearIssueCommentSnapshot>
   listIssueComments: (issueId: string) => Promise<LinearIssueCommentSnapshot[]>
+  getIssueCommentBody: (
+    issueId: string,
+    commentId: string
+  ) => Promise<string | null>
   listIssueStates: (issueIds: string[]) => Promise<IssueStateSnapshot[]>
   uploadAsset: (input: UploadAssetInput) => Promise<UploadAssetResult>
+  downloadAsset: (assetUrl: string) => Promise<DownloadAssetResult>
   closeIssue: (input: CloseIssueInput) => Promise<LinearIssueStateSnapshot>
   updateIssueFields: (input: {
     issueId: string
@@ -196,6 +206,7 @@ export type SlackGateway = {
   }) => Promise<string>
   getThreadReplies: (input: { channel: string; threadTs: string }) => Promise<{
     messages: { user: string | null; text: string; files: SlackFileRef[] }[]
+    truncated?: boolean
   }>
   downloadFile: (
     urlPrivate: string
@@ -250,12 +261,39 @@ export type LinearIssueWebhookSnapshot = {
   linearStateType: string
 }
 
+export type RequestListQuery = {
+  page: number
+  pageSize: number
+  status: "active" | "done" | "all"
+  severity: number[]
+}
+
+export type RequestSummary = Pick<
+  RequestRecord,
+  | "id"
+  | "title"
+  | "linearIdentifier"
+  | "linearStateName"
+  | "linearStateType"
+  | "severity"
+  | "createdAt"
+  | "updatedAt"
+>
+
+export type ApplyWebhookEventInput = {
+  eventKey: string
+  linearIssueId: string | null
+  rawBodyHash: string
+  snapshot: LinearIssueWebhookSnapshot | null
+}
+
 export type HelpdeskRepository = {
   createRequest: (input: CreateRequestRecordInput) => Promise<RequestRecord>
   getUserIdByEmail: (email: string) => Promise<string | null>
   listRequestsForOrganization: (
-    organizationId: string
-  ) => Promise<RequestRecord[]>
+    organizationId: string,
+    query: RequestListQuery
+  ) => Promise<{ requests: RequestSummary[]; total: number }>
   getRequestForOrganization: (
     id: string,
     organizationId: string
@@ -263,15 +301,13 @@ export type HelpdeskRepository = {
   getRequestByLinearIssueId: (
     linearIssueId: string
   ) => Promise<RequestRecord | null>
-  listOpenRequests: (limit: number) => Promise<RequestRecord[]>
-  hasProcessedWebhookEvent: (eventKey: string) => Promise<boolean>
-  recordWebhookEvent: (
-    eventKey: string,
-    linearIssueId: string | null,
-    rawBodyHash: string
-  ) => Promise<void>
-  hasProcessedSlackEvent: (eventId: string) => Promise<boolean>
-  recordSlackEvent: (eventId: string) => Promise<void>
+  listOpenRequests: (
+    limit: number
+  ) => Promise<Pick<RequestRecord, "linearIssueId" | "linearStateId">[]>
+  markRequestsSynced: (issueIds: string[], checkedAt: Date) => Promise<void>
+  applyWebhookEvent: (input: ApplyWebhookEventInput) => Promise<boolean>
+  claimSlackEvent: (eventId: string) => Promise<boolean>
+  releaseSlackEvent: (eventId: string) => Promise<void>
   updateRequestFromLinear: (
     snapshot: LinearIssueWebhookSnapshot
   ) => Promise<void>
@@ -304,6 +340,7 @@ export type TicketDraft = {
   expectedBehaviour: string
   currentBehaviour: string
   stepsToReproduce: string
+  severity: "urgent" | "high" | "medium" | "low"
 }
 
 export type GeminiGateway = {

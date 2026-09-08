@@ -120,7 +120,8 @@ function NewRequest() {
                 .then(({ request }) => {
                   queryClient.setQueryData(
                     requestKeys.detail(request.id),
-                    request
+                    request,
+                    { updatedAt: 0 }
                   )
                   void queryClient.invalidateQueries({
                     queryKey: requestKeys.list,

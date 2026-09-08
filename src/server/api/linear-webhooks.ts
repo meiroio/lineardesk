@@ -34,26 +34,21 @@ export function createLinearWebhooksApi(
       }
 
       const eventKey = getLinearWebhookEventKey(payload)
-      if (await deps.repo.hasProcessedWebhookEvent(eventKey)) {
-        return { ok: true, duplicate: true }
-      }
-
       const snapshot = extractIssueSnapshotFromWebhook(payload)
       const change = extractLinearChangeFromWebhook(payload)
       const linearIssueId =
         snapshot?.linearIssueId ?? change?.linearIssueId ?? null
+      const claimed = await deps.repo.applyWebhookEvent({
+        eventKey,
+        linearIssueId,
+        rawBodyHash: hashRawBody(rawBody),
+        snapshot,
+      })
+      if (!claimed) return { ok: true, duplicate: true }
       const record =
         deps.slack && change && linearIssueId
           ? await deps.repo.getRequestByLinearIssueId(linearIssueId)
           : null
-
-      if (snapshot) await deps.repo.updateRequestFromLinear(snapshot)
-
-      await deps.repo.recordWebhookEvent(
-        eventKey,
-        linearIssueId,
-        hashRawBody(rawBody)
-      )
 
       if (
         deps.slack &&

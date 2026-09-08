@@ -75,14 +75,17 @@ function makeRepo(): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "user-id"),
-    listRequestsForOrganization: vi.fn(async () => [makeRecord()]),
+    listRequestsForOrganization: vi.fn(async () => ({
+      requests: [makeRecord()],
+      total: 1,
+    })),
     getRequestForOrganization: vi.fn(async () => makeRecord()),
     getRequestByLinearIssueId: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
-    hasProcessedWebhookEvent: vi.fn(async () => false),
-    recordWebhookEvent: vi.fn(async () => undefined),
-    hasProcessedSlackEvent: vi.fn(async () => false),
-    recordSlackEvent: vi.fn(async () => undefined),
+    applyWebhookEvent: vi.fn(async () => true),
+    markRequestsSynced: vi.fn(async () => undefined),
+    claimSlackEvent: vi.fn(async () => true),
+    releaseSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
     updateRequestFields: vi.fn(async () => makeRecord()),
     updateRequestSeverity: vi.fn(async ({ severity }) =>
@@ -97,8 +100,10 @@ function makeLinear(): LinearGateway {
     createHelpdeskIssue: vi.fn(),
     createIssueComment: vi.fn(),
     listIssueComments: vi.fn(async () => []),
+    getIssueCommentBody: vi.fn(async () => null),
     listIssueStates: vi.fn(async () => []),
     uploadAsset: vi.fn(),
+    downloadAsset: vi.fn(),
     closeIssue: vi.fn(),
     updateIssueFields: vi.fn(),
     updateIssuePriority: vi.fn(),
@@ -407,12 +412,17 @@ describe("createApiApp", () => {
     )
 
     expect(response.status).toBe(200)
-    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1")
+    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+      page: 0,
+      pageSize: 20,
+      status: "all",
+      severity: [],
+    })
   })
 
   it("does not process the same Linear webhook event twice", async () => {
     const repo = makeRepo()
-    vi.mocked(repo.hasProcessedWebhookEvent).mockResolvedValue(true)
+    vi.mocked(repo.applyWebhookEvent).mockResolvedValue(false)
     const app = createApiApp({
       config,
       repo,
@@ -441,6 +451,56 @@ describe("createApiApp", () => {
       duplicate: true,
     })
     expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
+  })
+
+  it("passes bounded pagination and filters to the organization's query", async () => {
+    const repo = makeRepo()
+    const app = createApiApp({
+      config,
+      repo,
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => session) },
+      orgAccess: makeOrgAccess(),
+    })
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/requests?page=2&pageSize=10&status=done&severity=1,3"
+      )
+    )
+    expect(response.status).toBe(200)
+    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+      page: 2,
+      pageSize: 10,
+      status: "done",
+      severity: [1, 3],
+    })
+    const body = await response.json()
+    expect(body).toMatchObject({ total: 1, page: 2, pageSize: 10 })
+    expect(body.requests[0]).not.toHaveProperty("description")
+    expect(body.requests[0]).not.toHaveProperty("requesterEmail")
+  })
+
+  it.each([
+    "page=-1",
+    "page=0.5",
+    "pageSize=0",
+    "pageSize=101",
+    "status=other",
+    "severity=5",
+  ])("rejects invalid list parameters: %s", async (query) => {
+    const repo = makeRepo()
+    const app = createApiApp({
+      config,
+      repo,
+      linear: makeLinear(),
+      auth: { getSession: vi.fn(async () => session) },
+      orgAccess: makeOrgAccess(),
+    })
+    const response = await app.fetch(
+      new Request(`http://localhost/api/requests?${query}`)
+    )
+    expect(response.status).toBe(422)
+    expect(repo.listRequestsForOrganization).not.toHaveBeenCalled()
   })
 
   it("notifies the request creator when a Linear user comments", async () => {
@@ -490,11 +550,12 @@ describe("createApiApp", () => {
       threadTs: "123.45",
       text: expect.stringContaining("Please try the fix in staging."),
     })
-    expect(repo.recordWebhookEvent).toHaveBeenCalledWith(
-      expect.any(String),
-      "linear-issue-id",
-      expect.any(String)
-    )
+    expect(repo.applyWebhookEvent).toHaveBeenCalledWith({
+      eventKey: expect.any(String),
+      linearIssueId: "linear-issue-id",
+      rawBodyHash: expect.any(String),
+      snapshot: null,
+    })
   })
 
   it("returns Linear comments with a request detail", async () => {
@@ -902,6 +963,130 @@ describe("POST /api/uploads", () => {
 
     expect(response.status).toBe(401)
   })
+})
+
+describe("GET /api/requests/:id/assets", () => {
+  const assetUrl = "https://uploads.linear.app/asset/shot.png"
+
+  it("proxies an image referenced by an authorized request", async () => {
+    const repo = makeRepo()
+    vi.mocked(repo.getRequestForOrganization).mockResolvedValue(
+      makeRecord({ description: `Screenshot\n![shot](${assetUrl})` })
+    )
+    const linear = {
+      ...makeLinear(),
+      downloadAsset: vi.fn(async () => ({
+        bytes: new Uint8Array([1, 2, 3]),
+        contentType: "image/png",
+      })),
+    }
+    const app = createApiApp({
+      config,
+      repo,
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/api/requests/request-id/assets?url=${encodeURIComponent(assetUrl)}`
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("image/png")
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3])
+    )
+    expect(linear.downloadAsset).toHaveBeenCalledWith(assetUrl)
+  })
+
+  it("does not proxy an image absent from the request and its comments", async () => {
+    const linear = {
+      ...makeLinear(),
+      downloadAsset: vi.fn(),
+    }
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/api/requests/request-id/assets?url=${encodeURIComponent(assetUrl)}`
+      )
+    )
+
+    expect(response.status).toBe(404)
+    expect(linear.downloadAsset).not.toHaveBeenCalled()
+  })
+
+  it("proxies an image referenced by a Linear comment", async () => {
+    const linear = {
+      ...makeLinear(),
+      getIssueCommentBody: vi.fn(
+        async () => `More evidence\n![shot](${assetUrl})`
+      ),
+      downloadAsset: vi.fn(async () => ({
+        bytes: new Uint8Array([4, 5, 6]),
+        contentType: "image/png",
+      })),
+    }
+    const app = createApiApp({
+      config,
+      repo: makeRepo(),
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/api/requests/request-id/assets?commentId=comment-1&url=${encodeURIComponent(assetUrl)}`
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(linear.downloadAsset).toHaveBeenCalledWith(assetUrl)
+    expect(linear.getIssueCommentBody).toHaveBeenCalledWith(
+      "linear-issue-id",
+      "comment-1"
+    )
+    expect(linear.listIssueComments).not.toHaveBeenCalled()
+  })
+
+  it.each([null, "A comment with no image"])(
+    "rejects an asset without an owning comment (%s)",
+    async (body) => {
+      const linear = {
+        ...makeLinear(),
+        getIssueCommentBody: vi.fn(async () => body),
+      }
+      const app = createApiApp({
+        config,
+        repo: makeRepo(),
+        linear,
+        orgAccess: makeOrgAccess(),
+        auth: { getSession: vi.fn(async () => session) },
+      })
+      const response = await app.fetch(
+        new Request(
+          `http://localhost/api/requests/request-id/assets?commentId=foreign-comment&url=${encodeURIComponent(assetUrl)}`
+        )
+      )
+      expect(response.status).toBe(404)
+      expect(linear.getIssueCommentBody).toHaveBeenCalledWith(
+        "linear-issue-id",
+        "foreign-comment"
+      )
+      expect(linear.downloadAsset).not.toHaveBeenCalled()
+      expect(linear.listIssueComments).not.toHaveBeenCalled()
+    }
+  )
 })
 
 describe("GET /api/cron/reconcile", () => {

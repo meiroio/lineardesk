@@ -23,6 +23,15 @@ export class SlackEmailDomainNotAllowedError extends Error {
   }
 }
 
+export class SlackTicketCreationUncertainError extends Error {
+  constructor(cause: unknown) {
+    super("Ticket creation could not be confirmed", { cause })
+    this.name = "SlackTicketCreationUncertainError"
+  }
+}
+
+type SlackRequester = { email: string; organizationId: string }
+
 export type SlackTicketDeps = {
   config: Pick<AppConfig, "linear">
   repo: Pick<HelpdeskRepository, "getUserIdByEmail" | "createRequest">
@@ -33,6 +42,7 @@ export type SlackTicketDeps = {
 
 export type CreateSlackTicketInput = {
   slackUserId: string
+  resolvedRequester?: SlackRequester
   title: string
   description: string
   severity: number
@@ -49,15 +59,26 @@ export type CreateSlackTicketResult = {
 
 const IMAGE_MIME = /^image\//
 
-export async function createSlackTicket(
-  deps: SlackTicketDeps,
-  input: CreateSlackTicketInput
-): Promise<CreateSlackTicketResult> {
-  const email = await deps.slack.getUserEmail(input.slackUserId)
+export async function resolveSlackRequester(
+  deps: Pick<SlackTicketDeps, "slack" | "orgAccess">,
+  slackUserId: string
+): Promise<SlackRequester> {
+  const email = await deps.slack.getUserEmail(slackUserId)
   if (!email) throw new SlackEmailMissingError()
   const organization =
     await deps.orgAccess.findActiveOrganizationForEmail(email)
   if (!organization) throw new SlackEmailDomainNotAllowedError()
+
+  return { email, organizationId: organization.organizationId }
+}
+
+export async function createSlackTicket(
+  deps: SlackTicketDeps,
+  input: CreateSlackTicketInput
+): Promise<CreateSlackTicketResult> {
+  const { email, organizationId } =
+    input.resolvedRequester ??
+    (await resolveSlackRequester(deps, input.slackUserId))
 
   let droppedImages = 0
   const markdown: string[] = []
@@ -100,29 +121,35 @@ export async function createSlackTicket(
     .filter(Boolean)
     .join("\n\n")
 
-  const issue = await deps.linear.createHelpdeskIssue({
-    title: input.title,
-    description,
-    requesterEmail: email,
-    teamId: deps.config.linear.teamId,
-    priority: input.severity,
-  })
-
   const requesterUserId = await deps.repo.getUserIdByEmail(email)
 
-  const record = await deps.repo.createRequest({
-    requesterUserId,
-    organizationId: organization.organizationId,
-    requesterEmail: email,
-    title: input.title,
-    description,
-    severity: input.severity,
-    linearIssue: issue,
-    linearTeamId: deps.config.linear.teamId,
-    source: "slack",
-    slackChannelId: input.channel,
-    slackMessageTs: input.threadTs,
-  })
+  // Once the external write starts, a timeout does not prove it failed. Keep
+  // the event claim on this path so a retry cannot create a second issue.
+  try {
+    const issue = await deps.linear.createHelpdeskIssue({
+      title: input.title,
+      description,
+      requesterEmail: email,
+      teamId: deps.config.linear.teamId,
+      priority: input.severity,
+    })
 
-  return { record, issue, droppedImages }
+    const record = await deps.repo.createRequest({
+      requesterUserId,
+      organizationId,
+      requesterEmail: email,
+      title: input.title,
+      description,
+      severity: input.severity,
+      linearIssue: issue,
+      linearTeamId: deps.config.linear.teamId,
+      source: "slack",
+      slackChannelId: input.channel,
+      slackMessageTs: input.threadTs,
+    })
+
+    return { record, issue, droppedImages }
+  } catch (error) {
+    throw new SlackTicketCreationUncertainError(error)
+  }
 }

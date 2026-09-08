@@ -4,7 +4,13 @@ import { tanstackConfig } from "@tanstack/eslint-config"
 
 export default [
   {
-    ignores: [".output/**", ".vercel/**", "eslint.config.js", ".prettierrc"],
+    ignores: [
+      ".output/**",
+      ".vercel/**",
+      ".delta/**",
+      "eslint.config.js",
+      ".prettierrc",
+    ],
   },
   ...tanstackConfig,
   {

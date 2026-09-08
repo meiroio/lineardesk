@@ -2,15 +2,29 @@ import { RiImageLine } from "@remixicon/react"
 import type { ReactNode } from "react"
 import { useState } from "react"
 
-const IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
+import { markdownImages } from "@/lib/markdown-images"
 
-function AssetImage({ url, alt }: { url: string; alt: string }) {
+function AssetImage({
+  url,
+  alt,
+  requestId,
+  commentId,
+}: {
+  url: string
+  alt: string
+  requestId?: string
+  commentId?: string
+}) {
   const [failed, setFailed] = useState(false)
+  const displayUrl =
+    requestId && url.startsWith("https://uploads.linear.app/")
+      ? `/api/requests/${encodeURIComponent(requestId)}/assets?url=${encodeURIComponent(url)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`
+      : url
 
   if (failed) {
     return (
       <a
-        href={url}
+        href={displayUrl}
         target="_blank"
         rel="noreferrer"
         className="inline-flex w-fit items-center gap-1 text-sm font-medium hover:underline"
@@ -22,10 +36,16 @@ function AssetImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="block w-fit">
+    <a
+      href={displayUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="block w-fit"
+    >
       <img
-        src={url}
+        src={displayUrl}
         alt={alt}
+        loading={commentId ? "lazy" : undefined}
         className="max-h-80 rounded-lg border"
         onError={() => setFailed(true)}
       />
@@ -33,25 +53,37 @@ function AssetImage({ url, alt }: { url: string; alt: string }) {
   )
 }
 
-export function DescriptionBody({ text }: { text: string }) {
+export function DescriptionBody({
+  text,
+  requestId,
+  commentId,
+}: {
+  text: string
+  requestId?: string
+  commentId?: string
+}) {
   const parts: ReactNode[] = []
   let lastIndex = 0
   let key = 0
-  let match: RegExpExecArray | null
 
-  IMAGE_RE.lastIndex = 0
-  while ((match = IMAGE_RE.exec(text)) !== null) {
-    if (match.index > lastIndex) {
+  for (const image of markdownImages(text)) {
+    if (image.start > lastIndex) {
       parts.push(
         <span key={key++} className="whitespace-pre-wrap">
-          {text.slice(lastIndex, match.index)}
+          {text.slice(lastIndex, image.start)}
         </span>
       )
     }
     parts.push(
-      <AssetImage key={key++} url={match[2]} alt={match[1] || "screenshot"} />
+      <AssetImage
+        key={key++}
+        url={image.url}
+        alt={image.alt || "screenshot"}
+        requestId={requestId}
+        commentId={commentId}
+      />
     )
-    lastIndex = match.index + match[0].length
+    lastIndex = image.end
   }
   if (lastIndex < text.length) {
     parts.push(

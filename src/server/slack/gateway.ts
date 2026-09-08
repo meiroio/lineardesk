@@ -1,6 +1,23 @@
 import type { SlackGateway } from "../types"
 
 const API = "https://slack.com/api"
+const MAX_THREAD_MESSAGES = 200
+const MAX_THREAD_TEXT = 60_000
+
+type SlackThreadPage = {
+  has_more?: boolean
+  response_metadata?: { next_cursor?: string }
+  messages?: {
+    user?: string
+    text?: string
+    files?: {
+      id: string
+      name: string
+      mimetype: string
+      url_private: string
+    }[]
+  }[]
+}
 
 export function createSlackGateway(botToken: string): SlackGateway {
   async function call<T>(method: string, body: unknown): Promise<T> {
@@ -85,34 +102,49 @@ export function createSlackGateway(botToken: string): SlackGateway {
       return data.permalink
     },
     async getThreadReplies(input) {
-      const data = await callGet<{
-        messages?: {
-          user?: string
-          text?: string
-          files?: {
-            id: string
-            name: string
-            mimetype: string
-            url_private: string
-          }[]
-        }[]
-      }>("conversations.replies", {
-        channel: input.channel,
-        ts: input.threadTs,
-        limit: "200",
-      })
-      return {
-        messages: (data.messages ?? []).map((m) => ({
-          user: m.user ?? null,
-          text: m.text ?? "",
-          files: (m.files ?? []).map((f) => ({
-            id: f.id,
-            name: f.name,
-            mimetype: f.mimetype,
-            urlPrivate: f.url_private,
-          })),
-        })),
+      const messages: Awaited<
+        ReturnType<SlackGateway["getThreadReplies"]>
+      >["messages"] = []
+      let remainingText = MAX_THREAD_TEXT
+      let cursor = ""
+      // Bound even empty pages or a broken cursor chain; report the partial result.
+      for (let page = 0; page < 20; page++) {
+        const data = await callGet<SlackThreadPage>("conversations.replies", {
+          channel: input.channel,
+          ts: input.threadTs,
+          limit: String(MAX_THREAD_MESSAGES - messages.length),
+          ...(cursor ? { cursor } : {}),
+        })
+        for (const m of data.messages ?? []) {
+          if (messages.length === MAX_THREAD_MESSAGES || remainingText === 0)
+            return { messages, truncated: true }
+          const text = m.text ?? ""
+          const includedText = text.slice(0, remainingText)
+          messages.push({
+            user: m.user ?? null,
+            text: includedText,
+            files: (m.files ?? []).map((f) => ({
+              id: f.id,
+              name: f.name,
+              mimetype: f.mimetype,
+              urlPrivate: f.url_private,
+            })),
+          })
+          remainingText -= includedText.length
+          if (includedText.length < text.length)
+            return { messages, truncated: true }
+        }
+        const nextCursor = data.response_metadata?.next_cursor ?? ""
+        if (!nextCursor) return { messages, truncated: Boolean(data.has_more) }
+        if (
+          messages.length === MAX_THREAD_MESSAGES ||
+          remainingText === 0 ||
+          nextCursor === cursor
+        )
+          return { messages, truncated: true }
+        cursor = nextCursor
       }
+      return { messages, truncated: true }
     },
     async downloadFile(urlPrivate) {
       const res = await fetch(urlPrivate, {

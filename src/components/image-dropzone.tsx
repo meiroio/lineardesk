@@ -17,18 +17,22 @@ export function ImageDropzone({
   imageUpload,
   previewText,
   onClear,
+  label = "Attachments",
+  uploadLabel = "Upload images",
 }: {
   id: string
   imageUpload: ImageUpload
   previewText?: string
   onClear?: () => void
+  label?: string
+  uploadLabel?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
   return (
     <fieldset className="grid gap-2">
-      <legend className="text-sm font-medium">Attachments</legend>
+      <legend className="text-sm font-medium">{label}</legend>
       <div
         className={cn(
           "flex min-h-24 flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-4 text-center transition-colors",
@@ -86,7 +90,7 @@ export function ImageDropzone({
           onClick={() => inputRef.current?.click()}
         >
           <RiUpload2Line aria-hidden />
-          Upload images
+          {uploadLabel}
         </Button>
         <span className="w-full text-xs text-muted-foreground">
           PNG, JPEG, GIF, or WebP · up to 20 MB each

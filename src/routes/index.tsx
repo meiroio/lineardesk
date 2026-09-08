@@ -1,5 +1,9 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -30,11 +34,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   ApiError,
   formatDateTime,
-  isDoneStatus,
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
   statusClassName,
 } from "@/lib/helpdesk-api"
+import type { RequestListQuery } from "@/lib/helpdesk-api"
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => context.requirePortalAuth(),
@@ -50,19 +54,37 @@ function Dashboard() {
   const [page, setPage] = useState(0)
   const [severityFilter, setSeverityFilter] = useState<Set<number>>(new Set())
   const [statusScope, setStatusScope] = useState<StatusScope>("active")
+  const listQuery: RequestListQuery = {
+    page,
+    pageSize: PAGE_SIZE,
+    status: statusScope,
+    severity: [...severityFilter].sort((left, right) => left - right),
+  }
 
   const {
-    data: requests = [],
+    data: requestPage,
     status: queryStatus,
     error,
+    isPlaceholderData,
   } = useQuery({
-    queryKey: requestKeys.list,
-    queryFn: api.fetchRequests,
+    queryKey: requestKeys.page(listQuery),
+    queryFn: () => api.fetchRequests(listQuery),
+    placeholderData: keepPreviousData,
     // Poll so webhook-driven status changes appear without a manual reload,
     // and refresh when the tab regains focus (the global default is off).
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
     refetchOnWindowFocus: true,
   })
+  const requests = requestPage?.requests ?? []
+  const total = requestPage?.total ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const currentPage = requestPage?.page ?? page
+
+  useEffect(() => {
+    if (requestPage && !isPlaceholderData && page >= pageCount) {
+      setPage(pageCount - 1)
+    }
+  }, [requestPage, isPlaceholderData, page, pageCount])
 
   const isAuthError = error instanceof ApiError && error.status === 401
 
@@ -81,6 +103,7 @@ function Dashboard() {
     void queryClient.prefetchQuery({
       queryKey: requestKeys.detail(id),
       queryFn: () => api.fetchRequest(id),
+      staleTime: LIVE_REFETCH_INTERVAL_MS,
     })
   }
 
@@ -99,26 +122,8 @@ function Dashboard() {
     setPage(0)
   }
 
-  // Filter the full set first, then paginate, so each page holds up to
-  // PAGE_SIZE matching requests (not a page sliced and then filtered down).
-  const filteredRequests = requests.filter((request) => {
-    const done = isDoneStatus(request.linearStateType)
-    if (statusScope === "active" && done) return false
-    if (statusScope === "done" && !done) return false
-    if (severityFilter.size > 0) {
-      return request.severity != null && severityFilter.has(request.severity)
-    }
-    return true
-  })
-
-  const pageCount = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE))
-  const currentPage = Math.min(page, pageCount - 1)
-  const visibleRequests = filteredRequests.slice(
-    currentPage * PAGE_SIZE,
-    currentPage * PAGE_SIZE + PAGE_SIZE
-  )
   const rangeStart = currentPage * PAGE_SIZE + 1
-  const rangeEnd = currentPage * PAGE_SIZE + visibleRequests.length
+  const rangeEnd = currentPage * PAGE_SIZE + requests.length
 
   return (
     <PageShell
@@ -154,7 +159,7 @@ function Dashboard() {
           <AlertTitle>Requests unavailable</AlertTitle>
           <AlertDescription>Try again after a moment.</AlertDescription>
         </Alert>
-      ) : requests.length === 0 ? (
+      ) : total === 0 && statusScope === "all" && severityFilter.size === 0 ? (
         <Empty className="rounded-2xl border border-dashed">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -173,7 +178,7 @@ function Dashboard() {
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" aria-busy={isPlaceholderData}>
           <div className="flex flex-col gap-3">
             <StatusFilter value={statusScope} onChange={changeStatusScope} />
             <SeverityFilter
@@ -181,7 +186,7 @@ function Dashboard() {
               onToggle={toggleSeverity}
             />
           </div>
-          {filteredRequests.length === 0 ? (
+          {requests.length === 0 ? (
             <Empty className="rounded-2xl border border-dashed">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -197,7 +202,7 @@ function Dashboard() {
             <>
               <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
                 <ul className="divide-y">
-                  {visibleRequests.map((request) => (
+                  {requests.map((request) => (
                     <li key={request.id}>
                       <Link
                         to="/requests/$requestId"
@@ -234,16 +239,16 @@ function Dashboard() {
                   ))}
                 </ul>
               </div>
-              {filteredRequests.length > PAGE_SIZE ? (
+              {total > PAGE_SIZE ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
                   <span>
-                    Showing {rangeStart}–{rangeEnd} of {filteredRequests.length}
+                    Showing {rangeStart}–{rangeEnd} of {total}
                   </span>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={currentPage === 0}
+                      disabled={isPlaceholderData || currentPage === 0}
                       onClick={() => setPage(currentPage - 1)}
                     >
                       Previous
@@ -251,7 +256,9 @@ function Dashboard() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={currentPage >= pageCount - 1}
+                      disabled={
+                        isPlaceholderData || currentPage >= pageCount - 1
+                      }
                       onClick={() => setPage(currentPage + 1)}
                     >
                       Next

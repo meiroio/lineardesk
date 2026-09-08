@@ -31,5 +31,7 @@ export async function scheduleBackground(
     return
   }
 
-  await safe
+  // Bun's persistent server continues the I/O after the response. Awaiting here
+  // makes Slack's acknowledgement depend on AI and upstream API latency.
+  void safe
 }

@@ -6,6 +6,7 @@ import {
   mergeBugReportSections,
   parseCreateRequestInput,
   RequestValidationError,
+  severityPriorityOf,
 } from "../request-validation"
 import { extractMention, isUrlVerification } from "../slack/events"
 import {
@@ -16,8 +17,10 @@ import {
 import { verifySlackSignature } from "../slack/signature"
 import {
   createSlackTicket,
+  resolveSlackRequester,
   SlackEmailDomainNotAllowedError,
   SlackEmailMissingError,
+  SlackTicketCreationUncertainError,
 } from "../slack/ticket"
 import {
   EmptyResponseModel,
@@ -27,10 +30,16 @@ import {
 } from "./contracts"
 import type { ApiDependenciesPlugin } from "./dependencies"
 
+const THREAD_TRUNCATED_NOTICE =
+  "Only part of this thread was included because it exceeded the drafting limit. Review the remaining messages and attachments."
+
 function getSlackTicketFailureMessage(
   error: unknown,
   context: "modal" | "mention"
 ) {
+  if (error instanceof SlackTicketCreationUncertainError) {
+    return ":warning: I couldn't confirm ticket creation. Check Linear before retrying to avoid a duplicate ticket."
+  }
   const reason =
     error instanceof SlackEmailMissingError
       ? "your Slack account has no email"
@@ -147,17 +156,6 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
           }
           const messageText = (payload.message.text as string | undefined) ?? ""
 
-          if (!deps.gemini) {
-            await deps.slack.openView(
-              payload.trigger_id,
-              buildTicketModal({
-                prefill: { currentBehaviour: messageText },
-                privateMetadata: meta,
-              })
-            )
-            return ""
-          }
-
           const slack = deps.slack
           const gemini = deps.gemini
           const viewId = await slack.openView(
@@ -165,14 +163,25 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
             buildLoadingModal()
           )
           const work = (async () => {
+            let authorized = false
             try {
-              const { messages } = await slack.getThreadReplies({
-                channel: meta.channel,
-                threadTs: meta.threadTs,
-              })
-              const draft = await gemini.extractTicketDraft(
-                buildTranscript(messages)
+              await resolveSlackRequester(
+                { slack, orgAccess: deps.orgAccess },
+                payload.user.id
               )
+              authorized = true
+              let draft = { currentBehaviour: messageText }
+              if (gemini) {
+                const { messages, truncated } = await slack.getThreadReplies({
+                  channel: meta.channel,
+                  threadTs: meta.threadTs,
+                })
+                draft = await gemini.extractTicketDraft(
+                  buildTranscript(messages)
+                )
+                if (truncated)
+                  draft.currentBehaviour += `\n\n${THREAD_TRUNCATED_NOTICE}`
+              }
               await slack.updateView(
                 viewId,
                 buildTicketModal({ prefill: draft, privateMetadata: meta })
@@ -182,10 +191,31 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
               await slack
                 .updateView(
                   viewId,
-                  buildTicketModal({
-                    prefill: { currentBehaviour: messageText },
-                    privateMetadata: meta,
-                  })
+                  authorized
+                    ? buildTicketModal({
+                        prefill: { currentBehaviour: messageText },
+                        privateMetadata: meta,
+                      })
+                    : {
+                        type: "modal",
+                        title: {
+                          type: "plain_text",
+                          text: "Ticket unavailable",
+                        },
+                        close: { type: "plain_text", text: "Close" },
+                        blocks: [
+                          {
+                            type: "section",
+                            text: {
+                              type: "plain_text",
+                              text: getSlackTicketFailureMessage(
+                                error,
+                                "modal"
+                              ),
+                            },
+                          },
+                        ],
+                      }
                 )
                 .catch((updateError) => {
                   console.error("slack loading view update failed", updateError)
@@ -246,11 +276,18 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
                 result.droppedImages > 0
                   ? ` (couldn't attach ${result.droppedImages} image(s))`
                   : ""
-              await slack.postMessage({
-                channel: parsed.meta.channel,
-                threadTs: parsed.meta.threadTs || undefined,
-                text: `:white_check_mark: Created *${result.issue.identifier}* — ${result.issue.url}${note}`,
-              })
+              await slack
+                .postMessage({
+                  channel: parsed.meta.channel,
+                  threadTs: parsed.meta.threadTs || undefined,
+                  text: `:white_check_mark: Created *${result.issue.identifier}* — ${result.issue.url}${note}`,
+                })
+                .catch((error) =>
+                  console.error(
+                    "slack ticket created but confirmation failed",
+                    error
+                  )
+                )
             } catch (error) {
               console.error("slack ticket creation failed", error)
               await slack
@@ -306,14 +343,17 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
 
         const mention = extractMention(payload)
         if (!mention) return ""
-        if (await deps.repo.hasProcessedSlackEvent(mention.eventId)) return ""
-        await deps.repo.recordSlackEvent(mention.eventId)
+        if (!(await deps.repo.claimSlackEvent(mention.eventId))) return ""
 
         const slack = deps.slack
         const gemini = deps.gemini
         const baseUrl = deps.config.betterAuthUrl.replace(/\/+$/, "")
         const work = (async () => {
           try {
+            const resolvedRequester = await resolveSlackRequester(
+              { slack, orgAccess: deps.orgAccess },
+              mention.user
+            )
             if (!gemini) {
               await slack.postMessage({
                 channel: mention.channel,
@@ -322,7 +362,7 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
               })
               return
             }
-            const { messages } = await slack.getThreadReplies({
+            const { messages, truncated } = await slack.getThreadReplies({
               channel: mention.channel,
               threadTs: mention.threadTs,
             })
@@ -348,9 +388,10 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
               },
               {
                 slackUserId: mention.user,
+                resolvedRequester,
                 title,
                 description,
-                severity: 3,
+                severity: severityPriorityOf(draft.severity) ?? 3,
                 channel: mention.channel,
                 threadTs: mention.threadTs,
                 files: images,
@@ -360,20 +401,34 @@ export function createSlackApi(apiDependencies: ApiDependenciesPlugin) {
               result.droppedImages > 0
                 ? ` (couldn't attach ${result.droppedImages} image(s))`
                 : ""
-            await slack.postMessage({
-              channel: mention.channel,
-              threadTs: mention.threadTs,
-              text: [
-                `:white_check_mark: Created *${result.issue.identifier}* from this thread${note} — here's the draft, give it a quick look:`,
-                "",
-                `*${title}*`,
-                description,
-                "",
-                `Not quite right? Edit it here: ${baseUrl}/requests/${result.record.id}`,
-              ].join("\n"),
-            })
+            await slack
+              .postMessage({
+                channel: mention.channel,
+                threadTs: mention.threadTs,
+                text: [
+                  `:white_check_mark: Created *${result.issue.identifier}* from this thread${note} — here's the draft, give it a quick look:`,
+                  "",
+                  `*${title}*`,
+                  `*Severity:* ${draft.severity[0].toUpperCase()}${draft.severity.slice(1)}`,
+                  description,
+                  ...(truncated
+                    ? [`:warning: ${THREAD_TRUNCATED_NOTICE}`]
+                    : []),
+                  "",
+                  `Not quite right? Edit it here: ${baseUrl}/requests/${result.record.id}`,
+                ].join("\n"),
+              })
+              .catch((error) =>
+                console.error(
+                  "slack ticket created but confirmation failed",
+                  error
+                )
+              )
           } catch (error) {
             console.error("slack mention auto-create failed", error)
+            if (!(error instanceof SlackTicketCreationUncertainError)) {
+              await deps.repo.releaseSlackEvent(mention.eventId)
+            }
             await slack
               .postMessage({
                 channel: mention.channel,

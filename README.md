@@ -128,7 +128,7 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
 
 ### Status sync
 
-The Linear webhook is the primary, near-real-time path for status updates and requester Slack notifications. Subscribe it to both **Issue** and **Comment** resources. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) pulls the current Linear state for every non-terminal request and corrects any that drifted. Comments are always read live from Linear, so they never go stale.
+The Linear webhook is the primary, near-real-time path for status updates and requester Slack notifications. Subscribe it to both **Issue** and **Comment** resources. As a safety net for missed webhook deliveries, a **daily Vercel cron** (`vercel.json` → `/api/cron/reconcile`, protected by `CRON_SECRET`) checks up to 200 non-terminal requests, oldest synchronization first, and corrects any that drifted. Every checked request advances through the scan, including unchanged or missing issues, so later runs reach the remaining tickets. Linear comments are fetched with their authors across all pages. Open detail views poll every 15 seconds and reuse completed prefetches for that interval.
 
 ### Slack intake (optional)
 
@@ -141,15 +141,19 @@ Set `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` (in Vercel → Settings → Env
 
 **AI pre-fill (optional)**
 
-With `GEMINI_API_KEY` set, the "Create LinearDesk ticket" message shortcut reads the **whole thread** and uses Gemini Flash to draft the ticket Title, Expected Behaviour, Current Behaviour, and Steps to Reproduce. The user reviews and edits the draft, picks severity, and submits. Without the key the shortcut opens the form with only the triggering message pre-filled into Current Behaviour. The `channels:history` scope (and `groups:history` for private channels) must be present in the app manifest for the thread read to work — adding these scopes requires **reinstalling** the app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)).
+With `GEMINI_API_KEY` set, the "Create LinearDesk ticket" message shortcut reads the thread within the limits below and uses Gemini Flash to draft the ticket Title, Expected Behaviour, Current Behaviour, Steps to Reproduce, and Severity. The user reviews and edits the draft before submitting. Without the key the shortcut opens the form with only the triggering message pre-filled into Current Behaviour. The `channels:history` scope (and `groups:history` for private channels) must be present in the app manifest for the thread read to work — adding these scopes requires **reinstalling** the app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)).
 
 **Usage**
 
 - `/ticket` — opens a form to file a new ticket directly from Slack.
-- "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket. With `GEMINI_API_KEY` set, the entire thread is read and the form fields are drafted automatically.
-- **`@LinearDesk` mention in a thread** — mentioning the bot in any thread immediately creates an AI-drafted ticket and replies in-thread with a link to the portal edit page. Gemini reads the full thread, including any images, and drafts the ticket; the images are also attached to the Linear issue. If `GEMINI_API_KEY` is not set, the bot replies with a hint to use `/ticket` or the ⋯ "Create LinearDesk ticket" shortcut instead — it cannot auto-draft without Gemini. This requires the `app_mentions:read` scope and Event Subscriptions enabled in the Slack app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)); adding the scope requires **reinstalling** the app.
+- "Create LinearDesk ticket" message shortcut (⋯ menu on any message) — pre-fills the form with the message text and any attached image, so the whole message becomes a ticket. With `GEMINI_API_KEY` set, thread text is read within the limits below and the form fields are drafted automatically.
+- **`@LinearDesk` mention in a thread** — mentioning the bot in any thread immediately creates an AI-drafted ticket and replies in-thread with the inferred severity and a link to the portal edit page. Gemini drafts from message text; supported images from the included messages are attached to the Linear issue separately. If `GEMINI_API_KEY` is not set, the bot replies with a hint to use `/ticket` or the ⋯ "Create LinearDesk ticket" shortcut instead — it cannot auto-draft without Gemini. This requires the `app_mentions:read` scope and Event Subscriptions enabled in the Slack app (see [`docs/slack-app-manifest.md`](docs/slack-app-manifest.md)); adding the scope requires **reinstalling** the app.
 
 Tickets created from any flow appear in the portal attributed to the Slack user's email (matched via `users:read.email`).
+
+Thread drafting follows Slack cursors up to 200 messages, 60,000 text characters, or 20 pages. The modal or confirmation displays a notice when this budget truncates the thread. Requesters must belong to an approved organization before thread retrieval or paid AI drafting.
+
+Slack deliveries are claimed atomically. Failures before Linear creation release the claim so a redelivery can retry. Once an external creation starts, interrupted or uncertain operations retain the claim to prevent duplicate issues; check Linear and reconcile the portal record before a manual retry. Failed confirmations do not retry ticket creation. Background work uses the serverless runtime lifetime hook when available and runs independently of acknowledgements on the persistent Bun server; it is not a durable job queue.
 
 **Requester notifications**
 
@@ -165,6 +169,8 @@ so requesters are not notified about their own portal actions.
 
 The ticket detail page has an **Edit** button visible to approved users in the ticket's customer organization while the ticket is in a non-terminal state. It lets them change the Title, Description, and Severity, and attach more screenshots through the same drop/upload control used during request creation. The update is applied to both the Linear issue and the portal database.
 
+Replies accept pasted, dropped, or selected screenshots. Because Linear stores uploaded files privately, the portal serves images through an authenticated request-scoped proxy using the server-side Linear token; the token is never exposed to the browser.
+
 **Phase 2 deploy step — migrate before deploying**
 
 Phase 2 adds a `slack_events` deduplication table. Apply the migration to prod **before** deploying this change:
@@ -174,6 +180,18 @@ bun run db:migrate:prod
 ```
 
 Deploying without this migration will cause every `@mention` event to 500 until the table exists.
+
+### Maintenance checks
+
+`bun run test`, `bun run typecheck`, and `bun run lint` check the application. Database integration checks opt in with `LINEARDESK_TEST_DATABASE_URL`; the supplied PostgreSQL role must be allowed to create databases. These tests create, migrate, and drop a unique test database, leaving the supplied database intact:
+
+```bash
+LINEARDESK_TEST_DATABASE_URL='postgresql://test-user@localhost:5432/postgres' bun run test -- src/server/__tests__/repository-integration.test.ts
+```
+
+Migration `0007_maintenance_indexes.sql` replaces the organization-only index with one matching list order, adds an index for the rotating reconciliation scan, and removes the redundant issue-ID index while preserving its unique constraint. Apply it with the usual migration command; production migrations remain a separate deployment step.
+
+The request-list API now accepts `page`, `pageSize` (1–100), `status` (`all`, `active`, `done`), and comma-separated `severity` values (1–4). It returns summary rows plus `total`, `page`, and `pageSize`; full descriptions and comments are available on the detail endpoint.
 
 ### Self-hosting (optional)
 

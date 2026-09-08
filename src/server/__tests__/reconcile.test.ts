@@ -40,14 +40,17 @@ function makeRepo(open: RequestRecord[]): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "u1"),
-    listRequestsForOrganization: vi.fn(async () => []),
+    listRequestsForOrganization: vi.fn(async () => ({
+      requests: [],
+      total: 0,
+    })),
     getRequestForOrganization: vi.fn(async () => null),
     getRequestByLinearIssueId: vi.fn(async () => null),
     listOpenRequests: vi.fn(async () => open),
-    hasProcessedWebhookEvent: vi.fn(async () => false),
-    recordWebhookEvent: vi.fn(async () => undefined),
-    hasProcessedSlackEvent: vi.fn(async () => false),
-    recordSlackEvent: vi.fn(async () => undefined),
+    applyWebhookEvent: vi.fn(async () => true),
+    markRequestsSynced: vi.fn(async () => undefined),
+    claimSlackEvent: vi.fn(async () => true),
+    releaseSlackEvent: vi.fn(async () => undefined),
     updateRequestFromLinear: vi.fn(async () => undefined),
     updateRequestFields: vi.fn(async () => makeRecord()),
     updateRequestSeverity: vi.fn(async () => makeRecord()),
@@ -60,8 +63,10 @@ function makeLinear(states: IssueStateSnapshot[]): LinearGateway {
     createHelpdeskIssue: vi.fn(),
     createIssueComment: vi.fn(),
     listIssueComments: vi.fn(async () => []),
+    getIssueCommentBody: vi.fn(async () => null),
     listIssueStates: vi.fn(async () => states),
     uploadAsset: vi.fn(),
+    downloadAsset: vi.fn(),
     closeIssue: vi.fn(),
     updateIssueFields: vi.fn(),
     updateIssuePriority: vi.fn(),
@@ -107,6 +112,10 @@ describe("reconcileOpenRequests", () => {
         linearStateType: "completed",
       })
     )
+    expect(repo.markRequestsSynced).toHaveBeenCalledWith(
+      ["issue-1", "issue-2"],
+      expect.any(Date)
+    )
   })
 
   it("does nothing when there are no open requests", async () => {
@@ -117,6 +126,7 @@ describe("reconcileOpenRequests", () => {
 
     expect(result).toEqual({ checked: 0, updated: 0 })
     expect(linear.listIssueStates).not.toHaveBeenCalled()
+    expect(repo.markRequestsSynced).not.toHaveBeenCalled()
     expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
   })
 
@@ -128,5 +138,21 @@ describe("reconcileOpenRequests", () => {
 
     expect(result).toEqual({ checked: 1, updated: 0 })
     expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
+    expect(repo.markRequestsSynced).toHaveBeenCalledWith(
+      ["issue-x"],
+      expect.any(Date)
+    )
+  })
+
+  it("does not advance the scan when the upstream batch fails", async () => {
+    const repo = makeRepo([makeRecord()])
+    const linear = makeLinear([])
+    vi.mocked(linear.listIssueStates).mockRejectedValue(
+      new Error("rate limited")
+    )
+    await expect(
+      reconcileOpenRequests({ repo, linear, limit: 200 })
+    ).rejects.toThrow("rate limited")
+    expect(repo.markRequestsSynced).not.toHaveBeenCalled()
   })
 })
