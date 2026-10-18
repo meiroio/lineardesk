@@ -1,5 +1,6 @@
 import type {
   LinearTeamsResponse,
+  RequestAssignment,
   PortalRequest,
   PortalRequestListResponse,
   RequestListQuery,
@@ -15,6 +16,7 @@ export type {
   LinearTeam,
   LinearTeamsResponse,
   UploadImageResponse,
+  RequestAssignment,
 } from "@/server/api/contracts"
 
 export class ApiError extends Error {
@@ -114,10 +116,28 @@ export async function fetchRequests(
     pageSize: String(query.pageSize),
     status: query.status,
   })
+  if (query.teamId) params.set("teamId", query.teamId)
   if (query.severity.length > 0) {
     params.set("severity", query.severity.join(","))
   }
   return apiGet<PortalRequestListResponse>(`/api/requests?${params}`)
+}
+
+export const assignmentKeys = {
+  detail: (id: string) => ["assignment", id] as const,
+}
+export async function fetchRequestAssignment(
+  id: string
+): Promise<RequestAssignment> {
+  return apiGet<RequestAssignment>(`/api/requests/${id}/assignment`)
+}
+export async function updateRequestAssignee(
+  id: string,
+  assigneeId: string | null
+): Promise<RequestAssignment> {
+  return apiPost<RequestAssignment>(`/api/requests/${id}/assignment`, {
+    assigneeId,
+  })
 }
 
 export async function fetchRequest(id: string): Promise<PortalRequest> {

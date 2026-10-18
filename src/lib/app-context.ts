@@ -7,6 +7,8 @@ import {
   fetchRequest,
   fetchRequests,
   fetchTeams,
+  fetchRequestAssignment,
+  updateRequestAssignee,
   updateRequest,
   updateRequestSeverity,
   uploadImage,
@@ -35,6 +37,8 @@ type SocialSignInInput = {
 }
 
 export type HelpdeskApiClient = {
+  fetchRequestAssignment: typeof fetchRequestAssignment
+  updateRequestAssignee: typeof updateRequestAssignee
   apiPost: <T>(path: string, body: unknown) => Promise<T>
   closeRequest: (
     id: string,
@@ -75,6 +79,8 @@ const defaultApi: HelpdeskApiClient = {
   fetchRequest,
   fetchRequests,
   fetchTeams,
+  fetchRequestAssignment,
+  updateRequestAssignee,
   updateRequest,
   updateRequestSeverity,
   uploadImage,

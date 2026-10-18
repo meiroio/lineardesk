@@ -4,7 +4,7 @@ export const THEME_STORAGE_KEY = "lineardesk-theme"
 // paint. Must stay dependency-free and in sync with toggleTheme below.
 export const themeInitScript = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY
-)});var d=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.style.colorScheme=d?"dark":"light"}catch(e){}})()`
+)});var d=t!=="light";var r=document.documentElement;r.classList.toggle("dark",d);r.style.colorScheme=d?"dark":"light"}catch(e){}})()`
 
 export function toggleTheme() {
   const root = document.documentElement

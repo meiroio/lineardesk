@@ -94,7 +94,7 @@ export function DescriptionBody({
   }
 
   return (
-    <div className="flex flex-col gap-3 text-sm leading-6 text-muted-foreground">
+    <div className="flex flex-col gap-3 text-sm leading-6 wrap-anywhere text-muted-foreground">
       {parts}
     </div>
   )

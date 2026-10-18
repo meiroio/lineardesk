@@ -88,6 +88,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           pageSize: query.pageSize ?? 20,
           status: query.status ?? ("all" as const),
           severity: query.severity?.split(",").map(Number) ?? [],
+          ...(query.teamId ? { teamId: query.teamId } : {}),
         }
         const { requests, total } = await deps.repo.listRequestsForOrganization(
           session.organizationId,

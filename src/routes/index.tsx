@@ -10,17 +10,21 @@ import {
   RiErrorWarningLine,
   RiInboxArchiveLine,
   RiLogoutBoxRLine,
+  RiSearchLine,
+  RiRefreshLine,
+  RiTimeLine,
 } from "@remixicon/react"
 import { useEffect, useState } from "react"
 
-import { BrandMark } from "@/components/logo"
+import { RequestPipeline, needsAttention } from "@/components/request-pipeline"
+import { TeamFilter } from "@/components/team-filter"
 import { PageShell } from "@/components/page-shell"
-import { SeverityBadge } from "@/components/severity-badge"
+import { RequestList } from "@/components/request-list"
 import { SeverityFilter } from "@/components/severity-filter"
 import { StatusFilter } from "@/components/status-filter"
 import type { StatusScope } from "@/components/status-filter"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Empty,
@@ -33,10 +37,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   ApiError,
-  formatDateTime,
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
-  statusClassName,
 } from "@/lib/helpdesk-api"
 import type { RequestListQuery } from "@/lib/helpdesk-api"
 
@@ -52,6 +54,8 @@ function Dashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
+  const [search, setSearch] = useState("")
+  const [teamId, setTeamId] = useState("")
   const [severityFilter, setSeverityFilter] = useState<Set<number>>(new Set())
   const [statusScope, setStatusScope] = useState<StatusScope>("active")
   const listQuery: RequestListQuery = {
@@ -59,6 +63,7 @@ function Dashboard() {
     pageSize: PAGE_SIZE,
     status: statusScope,
     severity: [...severityFilter].sort((left, right) => left - right),
+    ...(teamId ? { teamId } : {}),
   }
 
   const {
@@ -66,6 +71,7 @@ function Dashboard() {
     status: queryStatus,
     error,
     isPlaceholderData,
+    dataUpdatedAt,
   } = useQuery({
     queryKey: requestKeys.page(listQuery),
     queryFn: () => api.fetchRequests(listQuery),
@@ -76,6 +82,12 @@ function Dashboard() {
     refetchOnWindowFocus: true,
   })
   const requests = requestPage?.requests ?? []
+  const visibleRequests = requests.filter((request) =>
+    `${request.title} ${request.linearIdentifier}`
+      .toLowerCase()
+      .includes(search.trim().toLowerCase())
+  )
+  const reviewCount = requests.filter(needsAttention).length
   const total = requestPage?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const currentPage = requestPage?.page ?? page
@@ -127,9 +139,27 @@ function Dashboard() {
 
   return (
     <PageShell
-      eyebrow={<BrandMark />}
-      title="Requests"
-      description="Track the current Linear status for your organization's requests."
+      title={`${total} ${total === 1 ? "request" : "requests"}${{ active: " in flight", done: " closed", all: "" }[statusScope]}`}
+      description={
+        reviewCount > 0
+          ? `${reviewCount} high-severity ${reviewCount === 1 ? "request is" : "requests are"} awaiting review${total > PAGE_SIZE ? " on this page" : ""}.`
+          : "Your requests, from first report to resolution."
+      }
+      topBarContent={
+        <label className="relative block w-32 sm:w-56">
+          <RiSearchLine
+            className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            aria-label="Search requests on this page"
+            placeholder="Search this page…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
+          />
+        </label>
+      }
       actions={
         <>
           <Link to="/requests/new" className={buttonVariants()}>
@@ -159,7 +189,10 @@ function Dashboard() {
           <AlertTitle>Requests unavailable</AlertTitle>
           <AlertDescription>Try again after a moment.</AlertDescription>
         </Alert>
-      ) : total === 0 && statusScope === "all" && severityFilter.size === 0 ? (
+      ) : total === 0 &&
+        statusScope === "all" &&
+        severityFilter.size === 0 &&
+        !teamId ? (
         <Empty className="rounded-2xl border border-dashed">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -179,14 +212,42 @@ function Dashboard() {
         </Empty>
       ) : (
         <div className="flex flex-col gap-4" aria-busy={isPlaceholderData}>
-          <div className="flex flex-col gap-3">
-            <StatusFilter value={statusScope} onChange={changeStatusScope} />
-            <SeverityFilter
-              selected={severityFilter}
-              onToggle={toggleSeverity}
+          <div className="-mt-2 mb-4">
+            <RequestPipeline
+              requests={requests}
+              paginated={total > PAGE_SIZE}
             />
           </div>
-          {requests.length === 0 ? (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <TeamFilter
+                api={api}
+                value={teamId}
+                onChange={(next) => {
+                  setTeamId(next)
+                  setPage(0)
+                }}
+              />
+              <span
+                className="hidden h-5 w-px bg-border sm:block"
+                aria-hidden
+              />
+              <StatusFilter value={statusScope} onChange={changeStatusScope} />
+              <span
+                className="hidden h-5 w-px bg-border sm:block"
+                aria-hidden
+              />
+              <SeverityFilter
+                selected={severityFilter}
+                onToggle={toggleSeverity}
+              />
+            </div>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <RiTimeLine className="size-3.5" aria-hidden />
+              Last updated
+            </span>
+          </div>
+          {visibleRequests.length === 0 ? (
             <Empty className="rounded-2xl border border-dashed">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -201,43 +262,10 @@ function Dashboard() {
           ) : (
             <>
               <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-                <ul className="divide-y">
-                  {requests.map((request) => (
-                    <li key={request.id}>
-                      <Link
-                        to="/requests/$requestId"
-                        params={{ requestId: request.id }}
-                        onMouseEnter={() => prefetchRequest(request.id)}
-                        onFocus={() => prefetchRequest(request.id)}
-                        className="group flex items-center gap-4 px-5 py-4 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
-                      >
-                        <span className="min-w-0 flex-1 space-y-0.5">
-                          <span className="block truncate text-sm font-medium">
-                            {request.title}
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
-                            {request.linearIdentifier} · Updated{" "}
-                            {formatDateTime(request.updatedAt)}
-                          </span>
-                        </span>
-                        <SeverityBadge
-                          priority={request.severity}
-                          className="hidden shrink-0 sm:inline-flex"
-                        />
-                        <Badge
-                          variant="outline"
-                          className={`shrink-0 ${statusClassName(request.linearStateType)}`}
-                        >
-                          {request.linearStateName}
-                        </Badge>
-                        <RiArrowRightSLine
-                          className="size-4 shrink-0 text-muted-foreground/50 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5"
-                          aria-hidden
-                        />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <RequestList
+                  requests={visibleRequests}
+                  onPrefetch={prefetchRequest}
+                />
               </div>
               {total > PAGE_SIZE ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
@@ -268,6 +296,25 @@ function Dashboard() {
               ) : null}
             </>
           )}
+          <footer className="mt-1 flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <RiRefreshLine className="size-3.5" aria-hidden />
+              Refreshed
+              {dataUpdatedAt
+                ? ` · ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                : ""}
+            </span>
+            {statusScope === "active" ? (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => changeStatusScope("done")}
+              >
+                Show closed requests{" "}
+                <RiArrowRightSLine className="size-3.5" aria-hidden />
+              </button>
+            ) : null}
+          </footer>
         </div>
       )}
     </PageShell>

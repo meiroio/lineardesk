@@ -12,6 +12,8 @@ import type {
   LinearIssueSnapshot,
   LinearIssueStateSnapshot,
   LinearTeamSnapshot,
+  LinearIssueAssignment,
+  LinearAssigneeSnapshot,
   UploadAssetInput,
   UploadAssetResult,
 } from "./types"
@@ -247,6 +249,57 @@ class LinearSdkGateway implements LinearGateway {
     private readonly getAccessToken: LinearAccessTokenProvider,
     private readonly config: LinearGatewayConfig
   ) {}
+
+  async getIssueAssignment(issueId: string): Promise<LinearIssueAssignment> {
+    const client = await this.getClient()
+    const { issue } = await client.client.request<
+      { issue: LinearIssueAssignment },
+      { issueId: string }
+    >(
+      `query LinearDeskIssueAssignment($issueId: String!) {
+        issue(id: $issueId) {
+          assignee { id name: displayName avatarUrl }
+          project { id name color }
+          team { id name }
+        }
+      }`,
+      { issueId }
+    )
+    return issue
+  }
+
+  async listTeamAssignees(teamId: string): Promise<LinearAssigneeSnapshot[]> {
+    const client = await this.getClient()
+    const team = await client.team(teamId)
+    const assignees: LinearAssigneeSnapshot[] = []
+    let after: string | undefined
+    do {
+      const page = await team.members({ first: 100, after })
+      assignees.push(
+        ...page.nodes
+          .filter((user) => user.active)
+          .map((user) => ({
+            id: user.id,
+            name: user.displayName,
+            avatarUrl: user.avatarUrl ?? null,
+          }))
+      )
+      if (!page.pageInfo.hasNextPage) break
+      if (!page.pageInfo.endCursor)
+        throw new Error("Linear team members returned an invalid cursor")
+      after = page.pageInfo.endCursor
+    } while (after)
+    return assignees.sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  async updateIssueAssignee(
+    issueId: string,
+    assigneeId: string | null
+  ): Promise<void> {
+    const client = await this.getClient()
+    const payload = await client.updateIssue(issueId, { assigneeId })
+    if (!payload.success) throw new Error("Linear assignment update failed")
+  }
 
   async listTeams(): Promise<LinearTeamSnapshot[]> {
     const client = await this.getClient()

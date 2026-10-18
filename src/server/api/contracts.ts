@@ -72,6 +72,7 @@ export const RequestListQueryModel = t.Object({
     t.Union([t.Literal("active"), t.Literal("done"), t.Literal("all")])
   ),
   severity: t.Optional(t.String({ pattern: "^[1-4](,[1-4]){0,3}$" })),
+  teamId: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
 })
 
 export const PortalRequestListResponseModel = t.Object({
@@ -99,6 +100,27 @@ export const LinearTeamsResponseModel = t.Object({
   teams: t.Array(LinearTeamModel),
   defaultTeamId: t.String(),
 })
+
+export const LinearProjectModel = t.Object({
+  id: t.String(),
+  name: t.String(),
+  color: NullableString,
+})
+export const LinearAssigneeModel = t.Object({
+  id: t.String(),
+  name: t.String(),
+  avatarUrl: NullableString,
+})
+export const RequestAssignmentModel = t.Object({
+  assignee: t.Union([LinearAssigneeModel, t.Null()]),
+  project: t.Union([LinearProjectModel, t.Null()]),
+  team: t.Object({ id: t.String(), name: t.String() }),
+  assignees: t.Array(LinearAssigneeModel),
+})
+export const UpdateAssignmentBodyModel = t.Object({
+  assigneeId: t.Union([t.String({ minLength: 1, maxLength: 128 }), t.Null()]),
+})
+export type RequestAssignment = typeof RequestAssignmentModel.static
 
 export const CreateRequestBodyModel = t.Object({
   title: t.String(),

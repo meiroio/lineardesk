@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge"
+import { RiBarChartFill } from "@remixicon/react"
 import { cn } from "@/lib/utils"
 
 export const SEVERITY_LEVELS = [
@@ -30,9 +30,19 @@ export function SeverityBadge({
   if (!meta) return null
 
   return (
-    <Badge variant="outline" className={className}>
-      <span className={cn("size-1.5 rounded-full", meta.dot)} aria-hidden />
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 text-xs",
+        priority === 1
+          ? "text-destructive"
+          : priority === 2
+            ? "text-status-triage"
+            : "text-muted-foreground",
+        className
+      )}
+    >
+      <RiBarChartFill className="size-3.5" aria-hidden />
       {meta.label}
-    </Badge>
+    </span>
   )
 }

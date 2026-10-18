@@ -10,9 +10,7 @@ export function SeverityFilter({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm font-medium text-muted-foreground">
-        Severity
-      </span>
+      <span className="sr-only">Severity</span>
       {SEVERITY_LEVELS.map((level) => {
         const active = selected.has(level.priority)
         return (
@@ -22,16 +20,16 @@ export function SeverityFilter({
             aria-pressed={active}
             onClick={() => onToggle(level.priority)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-4xl border px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               active
-                ? "border-transparent bg-primary text-primary-foreground"
+                ? "border-status-triage/40 bg-status-triage/10 text-status-triage"
                 : "border-border text-muted-foreground hover:text-foreground"
             )}
           >
             <span
               className={cn(
                 "size-1.5 rounded-full",
-                active ? "bg-primary-foreground" : level.dot
+                active ? "bg-current" : level.dot
               )}
               aria-hidden
             />

@@ -105,6 +105,22 @@ export type LinearIssueSnapshot = {
   state: LinearIssueStateSnapshot
 }
 
+export type LinearProjectSnapshot = {
+  id: string
+  name: string
+  color: string | null
+}
+export type LinearAssigneeSnapshot = {
+  id: string
+  name: string
+  avatarUrl: string | null
+}
+export type LinearIssueAssignment = {
+  assignee: LinearAssigneeSnapshot | null
+  project: LinearProjectSnapshot | null
+  team: { id: string; name: string }
+}
+
 export type LinearTeamSnapshot = {
   id: string
   key: string
@@ -143,6 +159,12 @@ export type CloseIssueInput = {
 }
 
 export type LinearGateway = {
+  getIssueAssignment: (issueId: string) => Promise<LinearIssueAssignment>
+  listTeamAssignees: (teamId: string) => Promise<LinearAssigneeSnapshot[]>
+  updateIssueAssignee: (
+    issueId: string,
+    assigneeId: string | null
+  ) => Promise<void>
   listTeams: () => Promise<LinearTeamSnapshot[]>
   createHelpdeskIssue: (
     input: CreateHelpdeskIssueInput
@@ -266,6 +288,7 @@ export type RequestListQuery = {
   pageSize: number
   status: "active" | "done" | "all"
   severity: number[]
+  teamId?: string
 }
 
 export type RequestSummary = Pick<

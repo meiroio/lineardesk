@@ -12,6 +12,7 @@ import type {
 } from "./api/dependencies"
 import { createHealthApi } from "./api/health"
 import { createLinearWebhooksApi } from "./api/linear-webhooks"
+import { createRequestMetadataApi } from "./api/request-metadata"
 import { createRequestsApi } from "./api/requests"
 import { createSlackApi } from "./api/slack"
 import { createUploadsApi } from "./api/uploads"
@@ -40,6 +41,7 @@ export function createApiApp(dependencies?: ApiDependencies) {
     .use(apiDependencies)
     .use(createHealthApi())
     .use(createRequestsApi(apiDependencies))
+    .use(createRequestMetadataApi(apiDependencies))
     .use(createUploadsApi(apiDependencies))
     .use(createLinearWebhooksApi(apiDependencies))
     .use(createCronApi(apiDependencies))

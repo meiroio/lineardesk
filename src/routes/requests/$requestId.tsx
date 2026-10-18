@@ -7,9 +7,11 @@ import { useEffect, useState } from "react"
 import { DescriptionBody } from "@/components/description-body"
 import { ImageDropzone } from "@/components/image-dropzone"
 import { PageShell } from "@/components/page-shell"
+import { RequestAssignment } from "@/components/request-assignment"
+import { RequestProgress } from "@/components/request-progress"
+import { SeverityBadge } from "@/components/severity-badge"
 import { SeveritySelect } from "@/components/severity-select"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -31,7 +33,6 @@ import {
   isDoneStatus,
   LIVE_REFETCH_INTERVAL_MS,
   requestKeys,
-  statusClassName,
 } from "@/lib/helpdesk-api"
 import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 
@@ -282,7 +283,7 @@ function RequestDetail() {
     <PageShell
       backLabel="Requests"
       title={request.title}
-      description={request.linearIdentifier}
+      description={`Reported ${formatDateTime(request.createdAt)}`}
       backActions={
         <Link
           to="/requests/new"
@@ -292,43 +293,30 @@ function RequestDetail() {
           New request
         </Link>
       }
-      actions={
+      eyebrow={
         <>
-          <div className="flex flex-col items-end gap-1">
-            <SeveritySelect
-              priority={request.severity}
-              onValueChange={(severity) => void handleSeverityChange(severity)}
-              disabled={severityBusy}
-              invalid={Boolean(severityError)}
-              describedBy={severityError ? "severity-update-error" : undefined}
-            />
-            {severityError ? (
-              <p
-                id="severity-update-error"
-                role="alert"
-                className="max-w-48 text-right text-xs text-destructive"
-              >
-                {severityError}
-              </p>
-            ) : null}
-          </div>
-          <Badge
-            variant="outline"
-            className={statusClassName(request.linearStateType)}
-          >
-            {request.linearStateName}
-          </Badge>
+          <span className="rounded-md bg-muted px-2 py-1 font-mono text-[11px]">
+            {request.linearIdentifier}
+          </span>
+          <SeverityBadge priority={request.severity} />
         </>
       }
+      breadcrumb={request.linearIdentifier}
     >
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <RequestProgress
+        request={request}
+        assignment={
+          <RequestAssignment key={request.id} request={request} api={api} />
+        }
+      />
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_17.5rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+          <Card className="gap-4 rounded-none border-0 bg-transparent py-0 shadow-none ring-0">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-0">
               <CardTitle>Description</CardTitle>
               {isOpen && !editing ? (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => startEditing()}
                 >
@@ -336,7 +324,7 @@ function RequestDetail() {
                 </Button>
               ) : null}
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-0">
               {editing ? (
                 <form
                   className="flex flex-col gap-5"
@@ -414,8 +402,8 @@ function RequestDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="gap-4 rounded-none border-0 bg-transparent py-0 shadow-none ring-0">
+            <CardHeader className="px-0">
               <CardTitle>Activity</CardTitle>
               <CardDescription>
                 {commentsLoading
@@ -423,7 +411,7 @@ function RequestDetail() {
                   : formatCommentCount(comments.length)}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-0">
               {commentsLoading ? (
                 <div className="flex flex-col gap-5">
                   {[0, 1].map((row) => (
@@ -472,7 +460,7 @@ function RequestDetail() {
                 </p>
               )}
             </CardContent>
-            <CardFooter className="flex-col items-stretch border-t">
+            <CardFooter className="flex-col items-stretch rounded-xl border bg-card p-4">
               <form
                 className="flex flex-col gap-3"
                 onSubmit={handleReplySubmit}
@@ -531,11 +519,14 @@ function RequestDetail() {
           </Card>
         </div>
 
-        <Card size="sm" className="lg:sticky lg:top-8">
-          <CardHeader>
+        <Card
+          size="sm"
+          className="gap-4 rounded-none border-0 bg-transparent py-0 shadow-none ring-0 lg:sticky lg:top-8"
+        >
+          <CardHeader className="px-0">
             <CardTitle>Details</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             <dl className="flex flex-col gap-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Linear issue</dt>
@@ -555,6 +546,38 @@ function RequestDetail() {
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Severity</dt>
+                <dd>
+                  {" "}
+                  <div className="flex flex-col items-end gap-1">
+                    <SeveritySelect
+                      priority={request.severity}
+                      onValueChange={(severity) =>
+                        void handleSeverityChange(severity)
+                      }
+                      disabled={severityBusy}
+                      invalid={Boolean(severityError)}
+                      describedBy={
+                        severityError ? "severity-update-error" : undefined
+                      }
+                    />
+                    {severityError ? (
+                      <p
+                        id="severity-update-error"
+                        role="alert"
+                        className="max-w-48 text-right text-xs text-destructive"
+                      >
+                        {severityError}
+                      </p>
+                    ) : null}
+                  </div>
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Team</dt>
+                <dd>{request.linearIdentifier.split("-")[0]}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Submitted</dt>
                 <dd className="text-right font-medium">
                   {formatDateTime(request.createdAt)}
@@ -568,8 +591,18 @@ function RequestDetail() {
               </div>
             </dl>
           </CardContent>
+          <div className="rounded-[14px] border border-status-triage/15 bg-status-triage/5 p-4">
+            <h3 className="text-xs font-semibold text-status-triage">
+              What happens next
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              {isOpen
+                ? "The team will update this request as work moves forward. Add details or questions in Activity to keep the conversation going."
+                : "This request is closed. If you need more help, create a new request and reference this issue."}
+            </p>
+          </div>
           {isOpen ? (
-            <CardFooter className="flex-col items-stretch gap-2 border-t">
+            <CardFooter className="flex-col items-stretch gap-3 border-t px-0">
               {closing ? (
                 <>
                   <p className="text-sm text-muted-foreground">
@@ -605,6 +638,9 @@ function RequestDetail() {
                   Close request
                 </Button>
               )}
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Closing tells the team the issue no longer needs attention.
+              </p>
               {closeError ? (
                 <p className="text-sm text-destructive">{closeError}</p>
               ) : null}

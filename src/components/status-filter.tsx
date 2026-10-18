@@ -19,9 +19,8 @@ export function StatusFilter({
     <div
       role="radiogroup"
       aria-label="Status"
-      className="flex flex-wrap items-center gap-2"
+      className="inline-flex items-center gap-0.5 rounded-[10px] border bg-popover p-0.5"
     >
-      <span className="text-sm font-medium text-muted-foreground">Status</span>
       {STATUS_OPTIONS.map((option) => {
         const active = value === option.value
         return (
@@ -32,10 +31,10 @@ export function StatusFilter({
             aria-checked={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "inline-flex items-center rounded-4xl border px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "inline-flex items-center rounded-[7px] border px-3 py-1.5 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               active
-                ? "border-transparent bg-primary text-primary-foreground"
-                : "border-border text-muted-foreground hover:text-foreground"
+                ? "border-border bg-muted text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {option.label}

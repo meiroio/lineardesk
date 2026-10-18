@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createApiApp } from "../app"
 import type {
@@ -96,6 +96,13 @@ function makeRepo(): HelpdeskRepository {
 
 function makeLinear(): LinearGateway {
   return {
+    getIssueAssignment: vi.fn(async () => ({
+      assignee: null,
+      project: null,
+      team: { id: "team-id", name: "Base" },
+    })),
+    listTeamAssignees: vi.fn(async () => []),
+    updateIssueAssignee: vi.fn(async () => undefined),
     listTeams: vi.fn(async () => [{ id: "team-id", key: "BAS", name: "Base" }]),
     createHelpdeskIssue: vi.fn(),
     createIssueComment: vi.fn(),
@@ -1131,5 +1138,182 @@ describe("GET /api/cron/reconcile", () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({ ok: true })
     expect(repo.listOpenRequests).toHaveBeenCalled()
+  })
+})
+
+describe("team filtering and request assignment", () => {
+  let repo: HelpdeskRepository
+  let linear: LinearGateway
+  let auth: AuthBridge
+  let app: ReturnType<typeof createApiApp>
+  const project = { id: "project-1", name: "Integrations", color: "#a78bfa" }
+  const member = { id: "member-1", name: "Jan Dvořák", avatarUrl: null }
+
+  beforeEach(() => {
+    repo = makeRepo()
+    linear = makeLinear()
+    auth = { getSession: vi.fn(async () => session) }
+    vi.mocked(linear.getIssueAssignment).mockResolvedValue({
+      assignee: null,
+      project,
+      team: { id: "team-id", name: "Support engineering" },
+    })
+    vi.mocked(linear.listTeamAssignees).mockResolvedValue([member])
+    app = createApiApp({
+      config,
+      repo,
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth,
+    })
+  })
+
+  it("passes team, status, and severity filters to the organization-scoped database query", async () => {
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/requests?teamId=team-product&page=1&pageSize=10&status=active&severity=2"
+      )
+    )
+    expect(response.status).toBe(200)
+    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+      page: 1,
+      pageSize: 10,
+      status: "active",
+      severity: [2],
+      teamId: "team-product",
+    })
+    expect(linear.listTeams).not.toHaveBeenCalled()
+    expect(linear.getIssueAssignment).not.toHaveBeenCalled()
+  })
+
+  it("returns the real assignee, project, and current team members", async () => {
+    vi.mocked(linear.getIssueAssignment).mockResolvedValue({
+      assignee: member,
+      project,
+      team: { id: "current-team", name: "Platform" },
+    })
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/assignment")
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      assignee: member,
+      project,
+      team: { id: "current-team" },
+      assignees: [member],
+    })
+    expect(linear.listTeamAssignees).toHaveBeenCalledWith("current-team")
+  })
+
+  it.each(["member-1", null])(
+    "persists assignment %s in Linear and returns the refreshed value",
+    async (assigneeId) => {
+      vi.mocked(linear.updateIssueAssignee).mockImplementation(async () => {
+        vi.mocked(linear.getIssueAssignment).mockResolvedValue({
+          assignee: assigneeId ? member : null,
+          project,
+          team: { id: "team-id", name: "Support engineering" },
+        })
+      })
+      const response = await app.fetch(
+        new Request("http://localhost/api/requests/request-id/assignment", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ assigneeId }),
+        })
+      )
+      expect(response.status).toBe(200)
+      expect(linear.updateIssueAssignee).toHaveBeenCalledWith(
+        "linear-issue-id",
+        assigneeId
+      )
+      expect((await response.json()).assignee).toEqual(
+        assigneeId ? member : null
+      )
+    }
+  )
+
+  it("rejects an assignee outside the issue's team", async () => {
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/assignment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assigneeId: "foreign-member" }),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
+  })
+
+  it.each(["GET", "POST"])(
+    "blocks %s assignment access to another organization's request",
+    async (method) => {
+      vi.mocked(repo.getRequestForOrganization).mockResolvedValue(null)
+      const response = await app.fetch(
+        new Request(
+          "http://localhost/api/requests/foreign-request/assignment",
+          {
+            method,
+            ...(method === "POST"
+              ? {
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ assigneeId: "member-1" }),
+                }
+              : {}),
+          }
+        )
+      )
+      expect(response.status).toBe(404)
+      expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+        "foreign-request",
+        "org-1"
+      )
+      expect(linear.getIssueAssignment).not.toHaveBeenCalled()
+      expect(linear.listTeamAssignees).not.toHaveBeenCalled()
+      expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
+    }
+  )
+
+  it("requires authentication before filtering by team", async () => {
+    vi.mocked(auth.getSession).mockResolvedValue(null)
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests?teamId=team-product")
+    )
+    expect(response.status).toBe(401)
+    expect(repo.listRequestsForOrganization).not.toHaveBeenCalled()
+  })
+
+  it("can update assignment without reopening a closed request", async () => {
+    vi.mocked(repo.getRequestForOrganization).mockResolvedValue(
+      makeRecord({ linearStateType: "completed" })
+    )
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/assignment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assigneeId: null }),
+      })
+    )
+    expect(response.status).toBe(200)
+    expect(linear.updateIssueAssignee).toHaveBeenCalledWith(
+      "linear-issue-id",
+      null
+    )
+    expect(repo.updateRequestFromLinear).not.toHaveBeenCalled()
+  })
+
+  it("reports a failed Linear update without claiming success", async () => {
+    vi.mocked(linear.updateIssueAssignee).mockRejectedValue(
+      new Error("private upstream details")
+    )
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/assignment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assigneeId: "member-1" }),
+      })
+    )
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: "assignment_update_failed" })
   })
 })

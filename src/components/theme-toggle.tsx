@@ -12,8 +12,8 @@ export function ThemeToggle({ className }: { className?: string }) {
       className={className}
       onClick={toggleTheme}
     >
-      <RiSunLine aria-hidden className="dark:hidden" />
-      <RiMoonLine aria-hidden className="hidden dark:block" />
+      <RiSunLine aria-hidden className="hidden dark:block" />
+      <RiMoonLine aria-hidden className="dark:hidden" />
     </Button>
   )
 }

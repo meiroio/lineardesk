@@ -174,6 +174,9 @@ export function makeBusinessWorld() {
     listRequestsForOrganization: async (organizationId, query) => {
       const matching = Array.from(requests.values())
         .filter((request) => request.organizationId === organizationId)
+        .filter(
+          (request) => !query.teamId || request.linearTeamId === query.teamId
+        )
         .filter((request) => {
           const done = ["completed", "canceled", "duplicate"].includes(
             request.linearStateType
@@ -288,6 +291,13 @@ export function makeBusinessWorld() {
   }
 
   const linear: LinearGateway = {
+    getIssueAssignment: async () => ({
+      assignee: null,
+      project: null,
+      team: { id: "team-id", name: "Base" },
+    }),
+    listTeamAssignees: async () => [],
+    updateIssueAssignee: async () => undefined,
     listTeams: async () => [
       { id: "team-id", key: "BAS", name: "Base" },
       { id: "team-product", key: "PRD", name: "Product" },

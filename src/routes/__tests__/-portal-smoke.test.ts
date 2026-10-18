@@ -8,13 +8,18 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react"
 import { createElement } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AppRouterContext } from "@/lib/app-context"
 import { requestKeys } from "@/lib/helpdesk-api"
-import type { PortalRequest, RequestListQuery } from "@/lib/helpdesk-api"
+import type {
+  PortalRequest,
+  RequestListQuery,
+  RequestAssignment,
+} from "@/lib/helpdesk-api"
 import { getRouter } from "@/router"
 
 vi.mock("../__root", async () => {
@@ -33,6 +38,7 @@ const NOW = "2026-01-01T00:00:00.000Z"
 describe("portal route smoke", () => {
   let context: AppRouterContext
   let requests: PortalRequest[]
+  let assignment: RequestAssignment
   let apiPost: ReturnType<typeof vi.fn>
   let fetchRequest: ReturnType<typeof vi.fn>
   let fetchRequests: ReturnType<typeof vi.fn>
@@ -55,35 +61,49 @@ describe("portal route smoke", () => {
       }),
     ]
 
+    assignment = {
+      assignee: { id: "jan", name: "Jan Dvořák", avatarUrl: null },
+      project: { id: "integrations", name: "Integrations", color: "#a78bfa" },
+      team: { id: "team-id", name: "Support engineering" },
+      assignees: [
+        { id: "jan", name: "Jan Dvořák", avatarUrl: null },
+        { id: "mia", name: "Mia Novak", avatarUrl: null },
+      ],
+    }
     requirePortalAuth = vi.fn(async () => undefined)
-    fetchRequests = vi.fn(async (query: RequestListQuery) => ({
-      requests: requests
-        .slice(query.page * query.pageSize, (query.page + 1) * query.pageSize)
-        .map(
-          ({
-            id,
-            title,
-            linearIdentifier,
-            linearStateName,
-            linearStateType,
-            severity,
-            updatedAt,
-            createdAt,
-          }) => ({
-            id,
-            title,
-            linearIdentifier,
-            linearStateName,
-            linearStateType,
-            severity,
-            updatedAt,
-            createdAt,
-          })
-        ),
-      total: requests.length,
-      page: query.page,
-      pageSize: query.pageSize,
-    }))
+    fetchRequests = vi.fn(async (query: RequestListQuery) => {
+      const matching = requests.filter(
+        (request) => !query.teamId || request.linearTeamId === query.teamId
+      )
+      return {
+        requests: matching
+          .slice(query.page * query.pageSize, (query.page + 1) * query.pageSize)
+          .map(
+            ({
+              id,
+              title,
+              linearIdentifier,
+              linearStateName,
+              linearStateType,
+              severity,
+              updatedAt,
+              createdAt,
+            }) => ({
+              id,
+              title,
+              linearIdentifier,
+              linearStateName,
+              linearStateType,
+              severity,
+              updatedAt,
+              createdAt,
+            })
+          ),
+        total: matching.length,
+        page: query.page,
+        pageSize: query.pageSize,
+      }
+    })
     fetchRequest = vi.fn(async (id: string) => {
       const request = requests.find((item) => item.id === id)
       if (!request) throw new Error("not_found")
@@ -172,6 +192,16 @@ describe("portal route smoke", () => {
         },
       }),
       api: {
+        fetchRequestAssignment: vi.fn(async () => assignment),
+        updateRequestAssignee: vi.fn(async (_id, assigneeId) => {
+          assignment = {
+            ...assignment,
+            assignee:
+              assignment.assignees.find((user) => user.id === assigneeId) ??
+              null,
+          }
+          return assignment
+        }),
         apiPost: apiPost as AppRouterContext["api"]["apiPost"],
         closeRequest: vi.fn(),
         fetchRequest: fetchRequest as AppRouterContext["api"]["fetchRequest"],
@@ -208,11 +238,140 @@ describe("portal route smoke", () => {
     vi.clearAllMocks()
   })
 
+  it("searches teams, resets pagination, and filters requests across pages", async () => {
+    requests = Array.from({ length: 12 }, (_, index) =>
+      makeRequest({
+        id: `request-${index + 1}`,
+        title: `Team request ${index + 1}`,
+        linearIdentifier: `BAS-${index + 1}`,
+      })
+    )
+    requests[11].linearTeamId = "team-product"
+    renderPortal("/", context)
+    await screen.findByText("Showing 1–10 of 12")
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    await screen.findByText("Showing 11–12 of 12")
+    fireEvent.click(screen.getByRole("button", { name: "Filter by team" }))
+    const teamSearch = await screen.findByRole("textbox", {
+      name: "Filter teams",
+    })
+    fireEvent.change(teamSearch, { target: { value: "prd" } })
+    expect(screen.queryByRole("button", { name: "Base" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Product" }))
+    await waitFor(() =>
+      expect(fetchRequests).toHaveBeenLastCalledWith({
+        page: 0,
+        pageSize: 10,
+        status: "active",
+        severity: [],
+        teamId: "team-product",
+      })
+    )
+    await waitFor(() =>
+      expect(screen.queryByText("Team request 11")).toBeNull()
+    )
+    expect(screen.getByText("Team request 12")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Filter by team" }))
+    fireEvent.click(await screen.findByRole("button", { name: "All teams" }))
+    await screen.findByText("Showing 1–10 of 12")
+    expect(screen.getByText("Team request 1")).toBeTruthy()
+  })
+
+  it("shows the real assignment and lets a user reassign and unassign a request", async () => {
+    renderPortal("/requests/request-1", context)
+    const panel = await screen.findByRole("region", {
+      name: "Request assignment",
+    })
+    await within(panel).findByText("Jan Dvořák")
+    expect(within(panel).getByText("Integrations")).toBeTruthy()
+    fireEvent.click(
+      within(panel).getByRole("combobox", { name: "Assign request" })
+    )
+    const mia = await screen.findByRole("option", { name: "Mia Novak" })
+    fireEvent.pointerDown(mia, { button: 0, pointerType: "mouse" })
+    fireEvent.click(mia)
+    await within(panel).findByText("Mia Novak")
+    expect(context.api.updateRequestAssignee).toHaveBeenCalledWith(
+      "request-1",
+      "mia"
+    )
+    fireEvent.click(
+      within(panel).getByRole("combobox", { name: "Assign request" })
+    )
+    const unassigned = await screen.findByRole("option", { name: "Unassigned" })
+    fireEvent.pointerDown(unassigned, { button: 0, pointerType: "mouse" })
+    fireEvent.click(unassigned)
+    await within(panel).findByText("Unassigned")
+    expect(context.api.updateRequestAssignee).toHaveBeenLastCalledWith(
+      "request-1",
+      null
+    )
+  })
+
+  it("keeps the previous assignee and displays an error when saving fails", async () => {
+    vi.mocked(context.api.updateRequestAssignee).mockRejectedValue(
+      new Error("Network failure")
+    )
+    renderPortal("/requests/request-1", context)
+    const panel = await screen.findByRole("region", {
+      name: "Request assignment",
+    })
+    await within(panel).findByText("Jan Dvořák")
+    fireEvent.click(
+      within(panel).getByRole("combobox", { name: "Assign request" })
+    )
+    const mia = await screen.findByRole("option", { name: "Mia Novak" })
+    fireEvent.pointerDown(mia, { button: 0, pointerType: "mouse" })
+    fireEvent.click(mia)
+    await within(panel).findByRole("alert")
+    expect(within(panel).getByText("Jan Dvořák")).toBeTruthy()
+    expect(within(panel).queryByText("Mia Novak")).toBeNull()
+  })
+
+  it("searches the current page by title or issue identifier and keeps pipeline counts scoped", async () => {
+    requests.push(
+      makeRequest({
+        id: "request-2",
+        title: "Webhook delivery is delayed",
+        linearIdentifier: "BAS-202",
+        linearStateType: "started",
+        linearStateName: "In progress",
+        severity: null,
+      })
+    )
+    renderPortal("/", context)
+    await screen.findByText("Webhook delivery is delayed")
+    const search = screen.getByRole("textbox", {
+      name: "Search requests on this page",
+    })
+    fireEvent.change(search, { target: { value: "webhook" } })
+    expect(screen.queryByText("Existing CSV export failure")).toBeNull()
+    expect(screen.getByText("Webhook delivery is delayed")).toBeTruthy()
+    expect(
+      within(
+        screen.getByRole("region", { name: "Request pipeline" })
+      ).getByText("In progress")
+    ).toBeTruthy()
+    const pipeline = within(
+      screen.getByRole("region", { name: "Request pipeline" })
+    )
+    expect(pipeline.getAllByText("1")).toHaveLength(2)
+    expect(pipeline.getByText("0")).toBeTruthy()
+    fireEvent.change(search, { target: { value: "bas-101" } })
+    expect(screen.getByText("Existing CSV export failure")).toBeTruthy()
+    expect(screen.queryByText("Webhook delivery is delayed")).toBeNull()
+    fireEvent.change(search, { target: { value: "no match" } })
+    expect(screen.getByText("No matching requests")).toBeTruthy()
+    fireEvent.change(search, { target: { value: "" } })
+    expect(screen.getByText("Existing CSV export failure")).toBeTruthy()
+    expect(screen.getByText("Webhook delivery is delayed")).toBeTruthy()
+  })
+
   it("loads the dashboard, submits a request, and lands on the detail page", async () => {
     renderPortal("/", context)
 
     expect(
-      await screen.findByRole("heading", { name: "Requests" })
+      await screen.findByRole("heading", { name: "1 request in flight" })
     ).toBeTruthy()
     expect(await screen.findByText("Existing CSV export failure")).toBeTruthy()
     expect(fetchRequests).toHaveBeenCalledWith({
@@ -281,7 +440,7 @@ describe("portal route smoke", () => {
         name: "Smoke flow CSV export failure",
       })
     ).toBeTruthy()
-    expect(screen.getAllByText("PRD-102")).toHaveLength(2)
+    expect(screen.getByRole("link", { name: "PRD-102" })).toBeTruthy()
     await waitFor(() => expect(fetchRequest).toHaveBeenCalledWith("request-2"))
     expect(await screen.findByText("No Linear comments yet.")).toBeTruthy()
     expect(screen.getByText(/The CSV export downloads/)).toBeTruthy()

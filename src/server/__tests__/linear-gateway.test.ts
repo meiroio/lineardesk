@@ -565,3 +565,49 @@ describe("closeIssue", () => {
     expect(updateIssue).not.toHaveBeenCalled()
   })
 })
+
+describe("assignment", () => {
+  it("loads all active team members across cursors", async () => {
+    const members = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nodes: [
+          { id: "jan", displayName: "Jan", avatarUrl: null, active: true },
+          { id: "old", displayName: "Old", active: false },
+        ],
+        pageInfo: { hasNextPage: true, endCursor: "next" },
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: "ana", displayName: "Ana", active: true }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      })
+    const team = vi.fn(async () => ({ members }))
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { team } as unknown as LinearClient
+    })
+    expect(
+      await createLinearGateway(config).listTeamAssignees("team-id")
+    ).toEqual([
+      { id: "ana", name: "Ana", avatarUrl: null },
+      { id: "jan", name: "Jan", avatarUrl: null },
+    ])
+    expect(team).toHaveBeenCalledWith("team-id")
+    expect(members).toHaveBeenLastCalledWith({ first: 100, after: "next" })
+  })
+
+  it("sends explicit null to unassign and rejects unsuccessful mutations", async () => {
+    const updateIssue = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValueOnce({ success: false })
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { updateIssue } as unknown as LinearClient
+    })
+    const linear = createLinearGateway(config)
+    await linear.updateIssueAssignee("issue-1", null)
+    expect(updateIssue).toHaveBeenCalledWith("issue-1", { assigneeId: null })
+    await expect(
+      linear.updateIssueAssignee("issue-1", "user-1")
+    ).rejects.toThrow("Linear assignment update failed")
+  })
+})

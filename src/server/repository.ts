@@ -87,6 +87,9 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     const terminalStates = ["completed", "canceled", "duplicate"]
     const where = and(
       eq(helpdeskRequests.organizationId, organizationId),
+      query.teamId
+        ? eq(helpdeskRequests.linearTeamId, query.teamId)
+        : undefined,
       query.status === "active"
         ? notInArray(helpdeskRequests.linearStateType, terminalStates)
         : query.status === "done"

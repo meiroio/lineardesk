@@ -90,6 +90,41 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
     )
   }
 
+  it("filters teams before pagination and counting while preserving organization isolation", async () => {
+    await seedRequests("org-a", 24)
+    await seedRequests("org-b", 8)
+    await pool.query(
+      "UPDATE helpdesk_requests SET linear_team_id = 'team-product' WHERE linear_issue_id IN ('org-a-1', 'org-a-23', 'org-b-5')"
+    )
+    const query = {
+      page: 0,
+      pageSize: 1,
+      status: "all" as const,
+      severity: [],
+      teamId: "team-product",
+    }
+    const first = await repo.listRequestsForOrganization("org-a", query)
+    const second = await repo.listRequestsForOrganization("org-a", {
+      ...query,
+      page: 1,
+    })
+    expect(first.total).toBe(2)
+    expect(first.requests).toHaveLength(1)
+    expect(second.total).toBe(2)
+    expect(second.requests).toHaveLength(1)
+    expect(
+      [...first.requests, ...second.requests].map(
+        (request) => request.linearIdentifier
+      )
+    ).toEqual(["org-a-23", "org-a-1"])
+    expect(
+      await repo.listRequestsForOrganization("org-a", {
+        ...query,
+        teamId: "unknown-team",
+      })
+    ).toEqual({ requests: [], total: 0 })
+  })
+
   it("keeps the unique issue constraint while installing the ordered maintenance indexes", async () => {
     const { rows } = await pool.query<{ indexname: string; indexdef: string }>(
       "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'helpdesk_requests'"

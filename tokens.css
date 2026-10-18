@@ -1,0 +1,8 @@
+/* Pen reference: warm stone surfaces, Geist headings, Inter body, lime actions. */
+:root {
+  --color-surface: oklch(0.19 0.006 56);
+  --color-surface-raised: oklch(0.216 0.006 56.043);
+  --color-ink-muted: oklch(0.709 0.01 56.259);
+  --font-display: "Geist Variable", sans-serif;
+  --font-body: "Inter Variable", sans-serif;
+}
