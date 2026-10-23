@@ -206,3 +206,9 @@ It listens on port `3000` and exposes `/api/health` for readiness/liveness probe
 ## License
 
 LinearDesk is **source-available** under the [MIT License with the Commons Clause](LICENSE). You may use, modify, fork, and redistribute it freely — but you may **not sell** it, meaning you may not provide to third parties, for a fee, a product or service whose value derives substantially from this code (including paid hosting/SaaS). See [LICENSE](LICENSE) for the exact terms.
+
+## Vercel runtime
+
+Vercel Functions use Bun via `"bunVersion": "1.x"` in `vercel.json`.
+This selects the Bun 1.3 track rather than the breaking Bun 1.4 migration.
+Validate the preview deployment before merging; Bun on Vercel is in Beta.
