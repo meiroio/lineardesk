@@ -1,4 +1,9 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import {
+  Link,
+  createFileRoute,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
@@ -22,7 +27,13 @@ import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/requests/new")({
-  beforeLoad: ({ context }) => context.requirePortalAuth(),
+  beforeLoad: async ({ context }) => {
+    const access = await context.requirePortalAuth()
+    if (access.portalAccess.organizationId === null) {
+      throw redirect({ to: "/" })
+    }
+    return access
+  },
   component: NewRequest,
 })
 

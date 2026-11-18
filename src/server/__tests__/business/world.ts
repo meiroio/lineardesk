@@ -205,6 +205,10 @@ export function makeBusinessWorld() {
       const request = requests.get(id)
       return request?.organizationId === organizationId ? request : null
     },
+    getOrganizationRequestById: async (id: string) => {
+      const request = requests.get(id)
+      return request?.organizationId ? request : null
+    },
     getRequestByLinearIssueId: async (linearIssueId: string) =>
       Array.from(requests.values()).find(
         (request) => request.linearIssueId === linearIssueId

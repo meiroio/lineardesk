@@ -66,6 +66,17 @@ export function getEmailDomain(email: string): string | null {
   return domain.includes("@") || !domain.includes(".") ? null : domain
 }
 
+export function isStaffEmail(email: string): boolean {
+  return /^[^@\s]+@meiro\.io$/i.test(email)
+}
+
+export function listPortalOrganizations(db: Database = getDb()) {
+  return db
+    .select({ id: authOrganizations.id, name: authOrganizations.name })
+    .from(authOrganizations)
+    .orderBy(authOrganizations.name, authOrganizations.id)
+}
+
 export function isPublicEmailDomain(domain: string) {
   return PUBLIC_EMAIL_DOMAINS.has(domain.trim().toLowerCase())
 }

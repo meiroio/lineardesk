@@ -1,9 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -42,15 +38,33 @@ import {
 } from "@/lib/helpdesk-api"
 import type { RequestListQuery } from "@/lib/helpdesk-api"
 
+type DashboardSearch = { organizationId?: string }
+
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => context.requirePortalAuth(),
+  validateSearch: (search): DashboardSearch => ({
+    organizationId:
+      typeof search.organizationId === "string"
+        ? search.organizationId
+        : undefined,
+  }),
   component: Dashboard,
 })
 
 const PAGE_SIZE = 10
 
 function Dashboard() {
-  const { api, auth } = Route.useRouteContext()
+  const { api, auth, portalAccess } = Route.useRouteContext()
+  const { organizationId }: DashboardSearch = Route.useSearch()
+  const { organizations } = portalAccess
+  const selectedOrganization =
+    organizations?.find(({ id }) => id === organizationId) ??
+    organizations?.find(({ id }) => id === portalAccess.organizationId) ??
+    organizations?.at(0)
+  const canWrite =
+    portalAccess.organizationId !== null &&
+    (!selectedOrganization ||
+      selectedOrganization.id === portalAccess.organizationId)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
@@ -64,6 +78,9 @@ function Dashboard() {
     status: statusScope,
     severity: [...severityFilter].sort((left, right) => left - right),
     ...(teamId ? { teamId } : {}),
+    ...(selectedOrganization
+      ? { organizationId: selectedOrganization.id }
+      : {}),
   }
 
   const {
@@ -75,7 +92,10 @@ function Dashboard() {
   } = useQuery({
     queryKey: requestKeys.page(listQuery),
     queryFn: () => api.fetchRequests(listQuery),
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1].organizationId === listQuery.organizationId
+        ? previous
+        : undefined,
     // Poll so webhook-driven status changes appear without a manual reload,
     // and refresh when the tab regains focus (the global default is off).
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
@@ -143,37 +163,64 @@ function Dashboard() {
       description={
         reviewCount > 0
           ? `${reviewCount} high-severity ${reviewCount === 1 ? "request is" : "requests are"} awaiting review${total > PAGE_SIZE ? " on this page" : ""}.`
-          : "Your requests, from first report to resolution."
+          : selectedOrganization
+            ? `Requests for ${selectedOrganization.name}.`
+            : "Your requests, from first report to resolution."
       }
       topBarContent={
-        <label className="relative block w-32 sm:w-56">
-          <RiSearchLine
-            className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            aria-label="Search requests on this page"
-            placeholder="Search this page…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
-          />
-        </label>
+        <>
+          {selectedOrganization && organizations ? (
+            <select
+              aria-label="Organization"
+              className="h-9 max-w-44 rounded-[10px] border border-border bg-popover px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={selectedOrganization.id}
+              onChange={(event) => {
+                setPage(0)
+                void navigate({
+                  to: "/",
+                  search: { organizationId: event.target.value },
+                })
+              }}
+            >
+              {organizations.map(({ id, name }) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <label className="relative block w-32 sm:w-56">
+            <RiSearchLine
+              className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              aria-label="Search requests on this page"
+              placeholder="Search this page…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
+            />
+          </label>
+        </>
       }
       actions={
         <>
-          <Link to="/requests/new" className={buttonVariants()}>
-            <RiAddLine aria-hidden />
-            New request
-          </Link>
+          {canWrite ? (
+            <Link to="/requests/new" className={buttonVariants()}>
+              <RiAddLine aria-hidden />
+              New request
+            </Link>
+          ) : null}
           <Button
             variant="outline"
             size="icon"
             aria-label="Sign out"
             onClick={() => {
-              void Promise.resolve(auth.signOut()).finally(() =>
-                navigate({ to: "/login" })
-              )
+              void Promise.resolve(auth.signOut()).finally(() => {
+                queryClient.clear()
+                return navigate({ to: "/login" })
+              })
             }}
           >
             <RiLogoutBoxRLine aria-hidden />
@@ -199,16 +246,20 @@ function Dashboard() {
               <RiInboxArchiveLine aria-hidden />
             </EmptyMedia>
             <EmptyTitle>No requests yet</EmptyTitle>
-            <EmptyDescription>
-              Submit a request and it will appear here.
-            </EmptyDescription>
+            {canWrite ? (
+              <EmptyDescription>
+                Submit a request and it will appear here.
+              </EmptyDescription>
+            ) : null}
           </EmptyHeader>
-          <EmptyContent>
-            <Link to="/requests/new" className={buttonVariants()}>
-              <RiAddLine aria-hidden />
-              New request
-            </Link>
-          </EmptyContent>
+          {canWrite ? (
+            <EmptyContent>
+              <Link to="/requests/new" className={buttonVariants()}>
+                <RiAddLine aria-hidden />
+                New request
+              </Link>
+            </EmptyContent>
+          ) : null}
         </Empty>
       ) : (
         <div className="flex flex-col gap-4" aria-busy={isPlaceholderData}>

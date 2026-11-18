@@ -203,6 +203,23 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
     )
   }
 
+  it("looks up assigned requests by portal ID without returning unassigned records", async () => {
+    await seedRequests("org-a", 1)
+    const [request] = await db
+      .select({ id: schema.helpdeskRequests.id })
+      .from(schema.helpdeskRequests)
+    await expect(
+      repo.getOrganizationRequestById(request.id)
+    ).resolves.toMatchObject({ organizationId: "org-a" })
+    await db
+      .update(schema.helpdeskRequests)
+      .set({ organizationId: null })
+      .where(eq(schema.helpdeskRequests.id, request.id))
+    await expect(
+      repo.getOrganizationRequestById(request.id)
+    ).resolves.toBeNull()
+  })
+
   it("filters teams before pagination and counting while preserving organization isolation", async () => {
     await seedRequests("org-a", 24)
     await seedRequests("org-b", 8)

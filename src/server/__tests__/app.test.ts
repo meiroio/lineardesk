@@ -80,6 +80,7 @@ function makeRepo(): HelpdeskRepository {
       total: 1,
     })),
     getRequestForOrganization: vi.fn(async () => makeRecord()),
+    getOrganizationRequestById: vi.fn(async () => makeRecord()),
     getRequestByLinearIssueId: vi.fn(async () => makeRecord()),
     listOpenRequests: vi.fn(async () => []),
     applyWebhookEvent: vi.fn(async () => true),

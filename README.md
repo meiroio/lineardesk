@@ -95,6 +95,13 @@ membership in the named organization.
 To set up the first operator account, pass your own email as both the recipient
 and inviter. Then verify the email and accept the invitation.
 
+### Meiro staff access
+
+Staff can sign in with a verified `meiro.io` address and choose any organization
+from the request dashboard. They can read the organization's requests, shared
+activity, and attachments. Staff can change tickets in their active organization
+or, if they only belong to one organization, in that organization.
+
 ### Sharing updates with clients
 
 To share a comment from Linear, put `[client]` on the first line by itself, then

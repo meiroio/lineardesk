@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import type * as OrgAccessModule from "../org-access"
 import type { AppConfig, AuthBridge, AuthSession } from "../types"
 
 const config: AppConfig = {
@@ -47,6 +48,7 @@ const orgAccess = {
 }
 const createOrgAccessRepository = vi.fn(() => orgAccess)
 const resolvePortalOrganization = vi.fn()
+const listPortalOrganizations = vi.fn()
 let requestHeaders = new Headers()
 
 vi.mock("@tanstack/react-start", () => ({
@@ -71,8 +73,10 @@ vi.mock("../session-cookie", () => ({
   hasBetterAuthSessionCookie,
 }))
 
-vi.mock("../org-access", () => ({
+vi.mock("../org-access", async (importOriginal) => ({
+  ...(await importOriginal<typeof OrgAccessModule>()),
   createOrgAccessRepository,
+  listPortalOrganizations,
   resolvePortalOrganization,
 }))
 
@@ -100,8 +104,27 @@ describe("getPortalAuthState", () => {
       authenticated: true,
       organizationId: "org-1",
     })
+    expect(listPortalOrganizations).not.toHaveBeenCalled()
     expect(getSession).toHaveBeenCalledWith(requestHeaders)
     expect(resolvePortalOrganization).toHaveBeenCalledWith(session, orgAccess)
+  })
+
+  it("authenticates staff without a writable membership and lists customer organizations", async () => {
+    const { getPortalAuthState } = await import("../route-auth")
+    getSession.mockResolvedValue({
+      ...session,
+      user: { ...session.user, email: "staff@meiro.io" },
+    })
+    resolvePortalOrganization.mockResolvedValue({ status: "forbidden" })
+    listPortalOrganizations.mockResolvedValue([
+      { id: "org-1", name: "Customer" },
+    ])
+
+    await expect(getPortalAuthState()).resolves.toEqual({
+      authenticated: true,
+      organizationId: null,
+      organizations: [{ id: "org-1", name: "Customer" }],
+    })
   })
 
   it("returns the organization access denial reason", async () => {

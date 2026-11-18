@@ -71,7 +71,7 @@ export type AppRouterContext = {
   api: HelpdeskApiClient
   auth: PortalAuthClient
   queryClient: QueryClient
-  requirePortalAuth: () => Promise<void> | void
+  requirePortalAuth: typeof requirePortalAuth
 }
 
 const defaultApi: HelpdeskApiClient = {

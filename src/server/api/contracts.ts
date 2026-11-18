@@ -64,6 +64,7 @@ export const PortalRequestSummaryModel = t.Pick(PortalRequestModel, [
 ])
 
 export const RequestListQueryModel = t.Object({
+  organizationId: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
   page: t.Optional(
     t.Numeric({ minimum: 0, maximum: 1_000_000, multipleOf: 1 })
   ),

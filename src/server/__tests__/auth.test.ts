@@ -308,6 +308,16 @@ describe.skipIf(!databaseUrl)("Better Auth customer admission", () => {
     ).toEqual([])
   })
 
+  it("signs in verified staff without an invitation or organization membership", async () => {
+    expect(await requestMagicLink("staff@meiro.io.example")).toBeUndefined()
+    expect(await requestMagicLink("staff@sub.meiro.io")).toBeUndefined()
+
+    const cookie = await signIn("Staff@Meiro.io")
+    const session = await auth.getSession(new Headers({ cookie }))
+    expect(session?.user.email).toBe("staff@meiro.io")
+    expect(await orgAccess.listMembershipsForUser(session!.user.id)).toEqual([])
+  })
+
   it("verifies the mailbox before allowing a fresh operator to accept a self-invite", async () => {
     const email = "bootstrap@another.example"
     const invitation = await updateCustomerAccess(db, {

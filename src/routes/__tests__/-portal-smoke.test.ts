@@ -70,10 +70,15 @@ describe("portal route smoke", () => {
         { id: "mia", name: "Mia Novak", avatarUrl: null },
       ],
     }
-    requirePortalAuth = vi.fn(async () => undefined)
+    requirePortalAuth = vi.fn(async () => ({
+      portalAccess: { authenticated: true, organizationId: "org-acme" },
+    }))
     fetchRequests = vi.fn(async (query: RequestListQuery) => {
       const matching = requests.filter(
-        (request) => !query.teamId || request.linearTeamId === query.teamId
+        (request) =>
+          (!query.teamId || request.linearTeamId === query.teamId) &&
+          (!query.organizationId ||
+            request.organizationId === query.organizationId)
       )
       return {
         requests: matching
@@ -236,6 +241,52 @@ describe("portal route smoke", () => {
     cleanup()
     context.queryClient.clear()
     vi.clearAllMocks()
+  })
+
+  it("lets staff switch organizations and browse other customers' requests read-only", async () => {
+    requests.push(
+      makeRequest({
+        id: "request-beta",
+        title: "Beta customer request",
+        linearIdentifier: "BAS-102",
+        organizationId: "org-beta",
+      })
+    )
+    requirePortalAuth.mockResolvedValue({
+      portalAccess: {
+        authenticated: true,
+        organizationId: "org-acme",
+        organizations: [
+          { id: "org-acme", name: "Acme" },
+          { id: "org-beta", name: "Beta" },
+        ],
+      },
+    })
+    renderPortal("/", context)
+
+    await screen.findByText("Existing CSV export failure")
+    expect(screen.getByRole("link", { name: "New request" })).toBeTruthy()
+    fireEvent.change(screen.getByRole("combobox", { name: "Organization" }), {
+      target: { value: "org-beta" },
+    })
+    const betaRequest = await screen.findByText("Beta customer request")
+    expect(screen.queryByText("Existing CSV export failure")).toBeNull()
+    expect(screen.queryByRole("link", { name: "New request" })).toBeNull()
+    expect(fetchRequests).toHaveBeenLastCalledWith(
+      expect.objectContaining({ organizationId: "org-beta" })
+    )
+
+    fireEvent.click(betaRequest)
+    await screen.findByRole("heading", { name: "Beta customer request" })
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Close request" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Post reply" })).toBeNull()
+    expect(
+      screen.queryByRole("combobox", { name: "Assign request" })
+    ).toBeNull()
+    expect(
+      screen.getByRole("link", { name: "Requests" }).getAttribute("href")
+    ).toBe("/?organizationId=org-beta")
   })
 
   it("searches teams, resets pagination, and filters requests across pages", async () => {

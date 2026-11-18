@@ -30,7 +30,10 @@ import {
 } from "./contracts"
 import type { ApiDependenciesPlugin } from "./dependencies"
 import {
+  getReadableRequest,
   requireAuthorizedSession,
+  requirePortalReadScope,
+  requireRequestListScope,
   serializeLinearComment,
   serializeRequest,
 } from "./http"
@@ -48,7 +51,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       "/teams",
       async ({ request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requirePortalReadScope(
           deps,
           request.headers
         )
@@ -74,14 +77,15 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       "/requests",
       async ({ query, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requireRequestListScope(
           deps,
-          request.headers
+          request.headers,
+          query.organizationId
         )
         if (!authorization.ok) {
           return status(authorization.status, authorization.body)
         }
-        const { session } = authorization
+        const { organizationId } = authorization
 
         const filters = {
           page: query.page ?? 0,
@@ -90,10 +94,9 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           severity: query.severity?.split(",").map(Number) ?? [],
           ...(query.teamId ? { teamId: query.teamId } : {}),
         }
-        const { requests, total } = await deps.repo.listRequestsForOrganization(
-          session.organizationId,
-          filters
-        )
+        const { requests, total } = organizationId
+          ? await deps.repo.listRequestsForOrganization(organizationId, filters)
+          : { requests: [], total: 0 }
         return {
           requests: requests.map((record) => ({
             ...record,
@@ -186,18 +189,18 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       "/requests/:id",
       async ({ params, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requirePortalReadScope(
           deps,
           request.headers
         )
         if (!authorization.ok) {
           return status(authorization.status, authorization.body)
         }
-        const { session } = authorization
 
-        const record = await deps.repo.getRequestForOrganization(
+        const record = await getReadableRequest(
+          deps.repo,
           params.id,
-          session.organizationId
+          authorization
         )
         if (!record) return status(404, { error: "not_found" })
 
@@ -222,7 +225,7 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       "/requests/:id/assets",
       async ({ params, query, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requirePortalReadScope(
           deps,
           request.headers
         )
@@ -230,9 +233,10 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           return status(authorization.status, authorization.body)
         }
 
-        const record = await deps.repo.getRequestForOrganization(
+        const record = await getReadableRequest(
+          deps.repo,
           params.id,
-          authorization.session.organizationId
+          authorization
         )
         if (!record) return status(404, { error: "not_found" })
 

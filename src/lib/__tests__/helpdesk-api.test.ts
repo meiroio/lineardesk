@@ -17,10 +17,11 @@ describe("fetchRequests", () => {
         status: "done",
         severity: [1, 2],
         teamId: "team-product",
+        organizationId: "org-acme",
       })
     ).toEqual(result)
     expect(fetch).toHaveBeenLastCalledWith(
-      "/api/requests?page=2&pageSize=10&status=done&teamId=team-product&severity=1%2C2",
+      "/api/requests?page=2&pageSize=10&status=done&teamId=team-product&organizationId=org-acme&severity=1%2C2",
       { credentials: "include" }
     )
 

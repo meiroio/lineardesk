@@ -7,7 +7,11 @@ import {
   RequestParamsModel,
   UpdateAssignmentBodyModel,
 } from "./contracts"
-import { requireAuthorizedSession } from "./http"
+import {
+  getReadableRequest,
+  requireAuthorizedSession,
+  requirePortalReadScope,
+} from "./http"
 
 const authErrors = {
   401: ErrorResponseModel,
@@ -25,15 +29,16 @@ export function createRequestMetadataApi(
       "/requests/:id/assignment",
       async ({ params, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requirePortalReadScope(
           deps,
           request.headers
         )
         if (!authorization.ok)
           return status(authorization.status, authorization.body)
-        const record = await deps.repo.getRequestForOrganization(
+        const record = await getReadableRequest(
+          deps.repo,
           params.id,
-          authorization.session.organizationId
+          authorization
         )
         if (!record) return status(404, { error: "not_found" })
         try {

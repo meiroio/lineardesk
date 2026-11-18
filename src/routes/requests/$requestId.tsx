@@ -42,7 +42,7 @@ export const Route = createFileRoute("/requests/$requestId")({
 })
 
 function RequestDetail() {
-  const { api } = Route.useRouteContext()
+  const { api, portalAccess } = Route.useRouteContext()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { requestId } = Route.useParams()
@@ -278,20 +278,29 @@ function RequestDetail() {
   }
 
   const isOpen = !isDoneStatus(request.linearStateType)
+  const canWrite =
+    portalAccess.organizationId !== null &&
+    portalAccess.organizationId === request.organizationId
+  const organization = portalAccess.organizations?.find(
+    (entry) => entry.id === request.organizationId
+  )
 
   return (
     <PageShell
       backLabel="Requests"
+      backOrganizationId={organization?.id}
       title={request.title}
       description={`Reported ${formatDateTime(request.createdAt)}`}
       backActions={
-        <Link
-          to="/requests/new"
-          className={buttonVariants({ variant: "outline" })}
-        >
-          <RiAddLine aria-hidden />
-          New request
-        </Link>
+        canWrite ? (
+          <Link
+            to="/requests/new"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <RiAddLine aria-hidden />
+            New request
+          </Link>
+        ) : null
       }
       eyebrow={
         <>
@@ -299,6 +308,12 @@ function RequestDetail() {
             {request.linearIdentifier}
           </span>
           <SeverityBadge priority={request.severity} />
+          {organization ? (
+            <span className="text-muted-foreground">{organization.name}</span>
+          ) : null}
+          {!canWrite ? (
+            <span className="text-muted-foreground">Read-only access</span>
+          ) : null}
         </>
       }
       breadcrumb={request.linearIdentifier}
@@ -306,7 +321,12 @@ function RequestDetail() {
       <RequestProgress
         request={request}
         assignment={
-          <RequestAssignment key={request.id} request={request} api={api} />
+          <RequestAssignment
+            key={request.id}
+            request={request}
+            api={api}
+            canWrite={canWrite}
+          />
         }
       />
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_17.5rem]">
@@ -314,7 +334,7 @@ function RequestDetail() {
           <Card className="gap-4 rounded-none border-0 bg-transparent py-0 shadow-none ring-0">
             <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-0">
               <CardTitle>Description</CardTitle>
-              {isOpen && !editing ? (
+              {canWrite && isOpen && !editing ? (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -325,7 +345,7 @@ function RequestDetail() {
               ) : null}
             </CardHeader>
             <CardContent className="px-0">
-              {editing ? (
+              {canWrite && editing ? (
                 <form
                   className="flex flex-col gap-5"
                   onSubmit={handleEditSubmit}
@@ -460,62 +480,64 @@ function RequestDetail() {
                 </p>
               )}
             </CardContent>
-            <CardFooter className="flex-col items-stretch rounded-xl border bg-card p-4">
-              <form
-                className="flex flex-col gap-3"
-                onSubmit={handleReplySubmit}
-              >
-                <Label htmlFor="request-reply" className="sr-only">
-                  Reply
-                </Label>
-                <Textarea
-                  id="request-reply"
-                  name="body"
-                  value={replyBody}
-                  onChange={(event) => setReplyBody(event.target.value)}
-                  onPaste={replyUpload.onPaste}
-                  minLength={1}
-                  maxLength={5000}
-                  required
-                  rows={4}
-                  aria-invalid={
-                    replyError || replyUploadError ? true : undefined
-                  }
-                  aria-describedby={
-                    replyError || replyUploadError
-                      ? "request-reply-error"
-                      : undefined
-                  }
-                  placeholder="Add a reply..."
-                />
-                <ImageDropzone
-                  id="reply-attachments"
-                  imageUpload={replyUpload}
-                  label="Reply attachments"
-                  uploadLabel="Upload reply images"
-                />
-                {replyUploadError || replyError ? (
-                  <p
-                    id="request-reply-error"
-                    className="text-sm text-destructive"
-                  >
-                    {replyUploadError ?? replyError}
-                  </p>
-                ) : null}
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    disabled={replying || replyUpload.pending > 0}
-                  >
-                    {replying
-                      ? "Posting..."
-                      : replyUpload.pending > 0
-                        ? "Uploading..."
-                        : "Post reply"}
-                  </Button>
-                </div>
-              </form>
-            </CardFooter>
+            {canWrite ? (
+              <CardFooter className="flex-col items-stretch rounded-xl border bg-card p-4">
+                <form
+                  className="flex flex-col gap-3"
+                  onSubmit={handleReplySubmit}
+                >
+                  <Label htmlFor="request-reply" className="sr-only">
+                    Reply
+                  </Label>
+                  <Textarea
+                    id="request-reply"
+                    name="body"
+                    value={replyBody}
+                    onChange={(event) => setReplyBody(event.target.value)}
+                    onPaste={replyUpload.onPaste}
+                    minLength={1}
+                    maxLength={5000}
+                    required
+                    rows={4}
+                    aria-invalid={
+                      replyError || replyUploadError ? true : undefined
+                    }
+                    aria-describedby={
+                      replyError || replyUploadError
+                        ? "request-reply-error"
+                        : undefined
+                    }
+                    placeholder="Add a reply..."
+                  />
+                  <ImageDropzone
+                    id="reply-attachments"
+                    imageUpload={replyUpload}
+                    label="Reply attachments"
+                    uploadLabel="Upload reply images"
+                  />
+                  {replyUploadError || replyError ? (
+                    <p
+                      id="request-reply-error"
+                      className="text-sm text-destructive"
+                    >
+                      {replyUploadError ?? replyError}
+                    </p>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      disabled={replying || replyUpload.pending > 0}
+                    >
+                      {replying
+                        ? "Posting..."
+                        : replyUpload.pending > 0
+                          ? "Uploading..."
+                          : "Post reply"}
+                    </Button>
+                  </div>
+                </form>
+              </CardFooter>
+            ) : null}
           </Card>
         </div>
 
@@ -548,29 +570,32 @@ function RequestDetail() {
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Severity</dt>
                 <dd>
-                  {" "}
-                  <div className="flex flex-col items-end gap-1">
-                    <SeveritySelect
-                      priority={request.severity}
-                      onValueChange={(severity) =>
-                        void handleSeverityChange(severity)
-                      }
-                      disabled={severityBusy}
-                      invalid={Boolean(severityError)}
-                      describedBy={
-                        severityError ? "severity-update-error" : undefined
-                      }
-                    />
-                    {severityError ? (
-                      <p
-                        id="severity-update-error"
-                        role="alert"
-                        className="max-w-48 text-right text-xs text-destructive"
-                      >
-                        {severityError}
-                      </p>
-                    ) : null}
-                  </div>
+                  {canWrite ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <SeveritySelect
+                        priority={request.severity}
+                        onValueChange={(severity) =>
+                          void handleSeverityChange(severity)
+                        }
+                        disabled={severityBusy}
+                        invalid={Boolean(severityError)}
+                        describedBy={
+                          severityError ? "severity-update-error" : undefined
+                        }
+                      />
+                      {severityError ? (
+                        <p
+                          id="severity-update-error"
+                          role="alert"
+                          className="max-w-48 text-right text-xs text-destructive"
+                        >
+                          {severityError}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <SeverityBadge priority={request.severity} />
+                  )}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -591,17 +616,19 @@ function RequestDetail() {
               </div>
             </dl>
           </CardContent>
-          <div className="rounded-[14px] border border-status-triage/15 bg-status-triage/5 p-4">
-            <h3 className="text-xs font-semibold text-status-triage">
-              What happens next
-            </h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              {isOpen
-                ? "The team will update this request as work moves forward. Add details or questions in Activity to keep the conversation going."
-                : "This request is closed. If you need more help, create a new request and reference this issue."}
-            </p>
-          </div>
-          {isOpen ? (
+          {canWrite ? (
+            <div className="rounded-[14px] border border-status-triage/15 bg-status-triage/5 p-4">
+              <h3 className="text-xs font-semibold text-status-triage">
+                What happens next
+              </h3>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                {isOpen
+                  ? "The team will update this request as work moves forward. Add details or questions in Activity to keep the conversation going."
+                  : "This request is closed. If you need more help, create a new request and reference this issue."}
+              </p>
+            </div>
+          ) : null}
+          {canWrite && isOpen ? (
             <CardFooter className="flex-col items-stretch gap-3 border-t px-0">
               {closing ? (
                 <>

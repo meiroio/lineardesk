@@ -5,9 +5,11 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   notInArray,
   sql,
 } from "drizzle-orm"
+import type { SQL } from "drizzle-orm"
 import type { NodePgDatabase } from "drizzle-orm/node-postgres"
 
 import type {
@@ -143,31 +145,39 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
       .limit(limit)
   }
 
-  async getRequestForOrganization(
+  getRequestForOrganization(
     id: string,
     organizationId: string
   ): Promise<RequestRecord | null> {
-    const rows = await this.db
-      .select()
-      .from(helpdeskRequests)
-      .where(
-        and(
-          eq(helpdeskRequests.id, id),
-          eq(helpdeskRequests.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    const row = rows[0] as HelpdeskRequestRow | undefined
-    return row ? toRequestRecord(row) : null
+    return this.getRequestMatching(
+      eq(helpdeskRequests.id, id),
+      eq(helpdeskRequests.organizationId, organizationId)
+    )
   }
 
-  async getRequestByLinearIssueId(
+  getOrganizationRequestById(id: string): Promise<RequestRecord | null> {
+    return this.getRequestMatching(
+      eq(helpdeskRequests.id, id),
+      isNotNull(helpdeskRequests.organizationId)
+    )
+  }
+
+  getRequestByLinearIssueId(
     linearIssueId: string
+  ): Promise<RequestRecord | null> {
+    return this.getRequestMatching(
+      eq(helpdeskRequests.linearIssueId, linearIssueId)
+    )
+  }
+
+  private async getRequestMatching(
+    predicate: SQL,
+    organizationScope?: SQL
   ): Promise<RequestRecord | null> {
     const rows = await this.db
       .select()
       .from(helpdeskRequests)
-      .where(eq(helpdeskRequests.linearIssueId, linearIssueId))
+      .where(and(predicate, organizationScope))
       .limit(1)
     const row = rows[0] as HelpdeskRequestRow | undefined
     return row ? toRequestRecord(row) : null

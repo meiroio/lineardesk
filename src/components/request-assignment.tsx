@@ -15,9 +15,11 @@ import type { HelpdeskApiClient } from "@/lib/app-context"
 export function RequestAssignment({
   request,
   api,
+  canWrite,
 }: {
   request: PortalRequest
   api: HelpdeskApiClient
+  canWrite: boolean
 }) {
   const queryClient = useQueryClient()
   const queryKey = assignmentKeys.detail(request.id)
@@ -107,71 +109,71 @@ export function RequestAssignment({
               </dd>
             </div>
           </dl>
-          <div className="border-t pt-4">
-            <Select
-              value={data.assignee?.id ?? "unassigned"}
-              disabled={mutation.isPending}
-              onValueChange={(value) => {
-                if (value !== null) {
-                  mutation.reset()
-                  mutation.mutate(value === "unassigned" ? null : value)
-                }
-              }}
-            >
-              <SelectTrigger
-                aria-label="Assign request"
-                className="h-9 w-full rounded-lg text-xs"
-                aria-describedby={
-                  mutation.isError ? "assignment-error" : undefined
-                }
-              >
-                {mutation.isPending ? "Saving assignment…" : "Change assignee"}
-              </SelectTrigger>
-              <SelectContent
-                align="end"
-                alignItemWithTrigger={false}
-                className="min-w-56"
-              >
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {data.assignee &&
-                !data.assignees.some(
-                  (user) => user.id === data.assignee?.id
-                ) ? (
-                  <SelectItem value={data.assignee.id} disabled>
-                    {data.assignee.name}
-                  </SelectItem>
-                ) : null}
-                {data.assignees.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {mutation.isError ? (
-              <p
-                id="assignment-error"
-                role="alert"
-                className="mt-2 text-xs text-destructive"
-              >
-                Could not update assignment. Try again.
-              </p>
-            ) : null}
-            {assignment.isError ? (
-              <p role="status" className="mt-2 text-xs text-muted-foreground">
-                Assignment may be out of date.{" "}
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => void assignment.refetch()}
-                >
-                  Refresh
-                </button>
-              </p>
-            ) : null}
-          </div>
         </>
       )}
+      {canWrite && data ? (
+        <div className="border-t pt-4">
+          <Select
+            value={data.assignee?.id ?? "unassigned"}
+            disabled={mutation.isPending}
+            onValueChange={(value) => {
+              if (value !== null) {
+                mutation.reset()
+                mutation.mutate(value === "unassigned" ? null : value)
+              }
+            }}
+          >
+            <SelectTrigger
+              aria-label="Assign request"
+              className="h-9 w-full rounded-lg text-xs"
+              aria-describedby={
+                mutation.isError ? "assignment-error" : undefined
+              }
+            >
+              {mutation.isPending ? "Saving assignment…" : "Change assignee"}
+            </SelectTrigger>
+            <SelectContent
+              align="end"
+              alignItemWithTrigger={false}
+              className="min-w-56"
+            >
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {data.assignee &&
+              !data.assignees.some((user) => user.id === data.assignee?.id) ? (
+                <SelectItem value={data.assignee.id} disabled>
+                  {data.assignee.name}
+                </SelectItem>
+              ) : null}
+              {data.assignees.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {mutation.isError ? (
+            <p
+              id="assignment-error"
+              role="alert"
+              className="mt-2 text-xs text-destructive"
+            >
+              Could not update assignment. Try again.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {data && assignment.isError ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          Assignment may be out of date.{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => void assignment.refetch()}
+          >
+            Refresh
+          </button>
+        </p>
+      ) : null}
     </section>
   )
 }

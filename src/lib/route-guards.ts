@@ -10,4 +10,5 @@ export async function requirePortalAuth() {
       search: { reason: auth.reason },
     })
   }
+  return { portalAccess: auth }
 }

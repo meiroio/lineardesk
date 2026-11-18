@@ -5,6 +5,8 @@ import { createAuthBridge } from "./auth"
 import { readAppConfig } from "./config"
 import {
   createOrgAccessRepository,
+  isStaffEmail,
+  listPortalOrganizations,
   resolvePortalOrganization,
 } from "./org-access"
 import { hasBetterAuthSessionCookie } from "./session-cookie"
@@ -27,6 +29,15 @@ export const getPortalAuthState = createServerFn({ method: "GET" }).handler(
       session,
       createOrgAccessRepository()
     )
+
+    if (isStaffEmail(session.user.email)) {
+      return {
+        authenticated: true,
+        organizationId:
+          resolution.status === "ok" ? resolution.organizationId : null,
+        organizations: await listPortalOrganizations(),
+      }
+    }
 
     if (resolution.status !== "ok") {
       return { authenticated: false, reason: resolution.status }

@@ -18,7 +18,7 @@ import { Pool } from "pg"
 import { pgPoolConfig } from "./db/client"
 import { createEmailSender } from "./email"
 import type { EmailSender } from "./email"
-import { withOrganizationInvitationLock } from "./org-access"
+import { isStaffEmail, withOrganizationInvitationLock } from "./org-access"
 import type { AppConfig, AuthBridge, AuthSession } from "./types"
 
 const acceptInvitationPath = "/organization/accept-invitation"
@@ -188,6 +188,7 @@ const validateUserInfo: ValidateUserInfo = async ({ user, source }, ctx) => {
   }
   if (
     source.action === "create-user" &&
+    !isStaffEmail(user.email) &&
     !(await hasPendingInvitation(
       await getCurrentAdapter(ctx.context.adapter),
       user.email
@@ -218,6 +219,8 @@ async function canSignIn(
   email: string,
   userId?: string
 ): Promise<boolean> {
+  if (isStaffEmail(email)) return true
+
   const member = userId
     ? await adapter.findOne({
         model: "member",

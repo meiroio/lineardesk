@@ -117,6 +117,7 @@ export async function fetchRequests(
     status: query.status,
   })
   if (query.teamId) params.set("teamId", query.teamId)
+  if (query.organizationId) params.set("organizationId", query.organizationId)
   if (query.severity.length > 0) {
     params.set("severity", query.severity.join(","))
   }

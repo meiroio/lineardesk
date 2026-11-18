@@ -279,6 +279,7 @@ export type LinearIssueWebhookSnapshot = {
 }
 
 export type RequestListQuery = {
+  organizationId?: string
   page: number
   pageSize: number
   status: "active" | "done" | "all"
@@ -316,6 +317,7 @@ export type HelpdeskRepository = {
     id: string,
     organizationId: string
   ) => Promise<RequestRecord | null>
+  getOrganizationRequestById: (id: string) => Promise<RequestRecord | null>
   getRequestByLinearIssueId: (
     linearIssueId: string
   ) => Promise<RequestRecord | null>
