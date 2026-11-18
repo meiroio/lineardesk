@@ -25,7 +25,6 @@ function makeOrgAccess(
 ): OrgAccessRepository {
   return {
     findActiveOrganizationForEmail: vi.fn(async () => null),
-    ensureMember: vi.fn(async () => undefined),
     listMembershipsForUser: vi.fn(async () => []),
     hasMembership: vi.fn(async () => false),
     setActiveOrganizationForSession: vi.fn(async () => undefined),
@@ -50,31 +49,23 @@ describe("organization access", () => {
     expect(isPublicEmailDomain("example.com")).toBe(false)
   })
 
-  it("auto-enrolls a domain user and sets the active organization", async () => {
+  it("selects the single existing membership and sets the active organization", async () => {
     const orgAccess = makeOrgAccess({
-      findActiveOrganizationForEmail: vi.fn(async () => ({
-        organizationId: "org-1",
-        organizationName: "Example",
-        organizationSlug: "example",
-        domain: "example.com",
-      })),
+      listMembershipsForUser: vi.fn(async () => [
+        { organizationId: "org-1", role: "member" },
+      ]),
     })
 
     await expect(
       resolvePortalOrganization(makeSession(), orgAccess)
     ).resolves.toEqual({ status: "ok", organizationId: "org-1" })
-    expect(orgAccess.ensureMember).toHaveBeenCalledWith({
-      userId: "user-1",
-      organizationId: "org-1",
-      role: "member",
-    })
     expect(orgAccess.setActiveOrganizationForSession).toHaveBeenCalledWith({
       sessionToken: "session-token",
       organizationId: "org-1",
     })
   })
 
-  it("uses an existing active membership without ensuring membership", async () => {
+  it("uses an existing active membership", async () => {
     const orgAccess = makeOrgAccess({
       hasMembership: vi.fn(async () => true),
     })
@@ -85,7 +76,6 @@ describe("organization access", () => {
         orgAccess
       )
     ).resolves.toEqual({ status: "ok", organizationId: "org-1" })
-    expect(orgAccess.ensureMember).not.toHaveBeenCalled()
     expect(orgAccess.findActiveOrganizationForEmail).not.toHaveBeenCalled()
   })
 
@@ -102,7 +92,7 @@ describe("organization access", () => {
     ).resolves.toEqual({ status: "multiple_organizations" })
   })
 
-  it("does not auto-select a domain org when the user has multiple memberships", async () => {
+  it("refuses a revoked active membership even when the matching domain is still approved", async () => {
     const orgAccess = makeOrgAccess({
       findActiveOrganizationForEmail: vi.fn(async () => ({
         organizationId: "org-1",
@@ -110,23 +100,19 @@ describe("organization access", () => {
         organizationSlug: "example",
         domain: "example.com",
       })),
-      listMembershipsForUser: vi.fn(async () => [
-        { organizationId: "org-2", role: "admin" },
-      ]),
     })
 
     await expect(
-      resolvePortalOrganization(makeSession(), orgAccess)
-    ).resolves.toEqual({ status: "multiple_organizations" })
-    expect(orgAccess.ensureMember).toHaveBeenCalledWith({
-      userId: "user-1",
-      organizationId: "org-1",
-      role: "member",
-    })
+      resolvePortalOrganization(
+        makeSession({ activeOrganizationId: "org-1" }),
+        orgAccess
+      )
+    ).resolves.toEqual({ status: "forbidden" })
+    expect(orgAccess.findActiveOrganizationForEmail).not.toHaveBeenCalled()
     expect(orgAccess.setActiveOrganizationForSession).not.toHaveBeenCalled()
   })
 
-  it("returns forbidden without membership or domain access", async () => {
+  it("returns forbidden without membership", async () => {
     await expect(
       resolvePortalOrganization(makeSession(), makeOrgAccess())
     ).resolves.toEqual({ status: "forbidden" })

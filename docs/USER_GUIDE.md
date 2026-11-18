@@ -7,8 +7,8 @@ without needing a Linear account yourself.
 
 There are two ways in:
 
-- **Web portal** — <https://lineardesk.vercel.app>. Sign in with Google or
-  request a magic link for your approved work email.
+- **Web portal** — <https://lineardesk.vercel.app>. Open your invitation, sign in
+  with the invited email address, and select **Accept invitation**.
 - **Slack** — mention the app, or use the message shortcut.
 
 Both create the same kind of request, and both show up in your customer
@@ -20,8 +20,9 @@ organization's portal list.
 
 ### From the web portal
 
-1. Go to <https://lineardesk.vercel.app> and sign in with Google or a magic
-   link for your approved work email.
+1. Go to <https://lineardesk.vercel.app> and sign in with the email you were
+   invited with. Use Google for a Gmail or Google Workspace account, or request an
+   emailed sign-in link.
 2. Click **New request**.
 3. Fill in the form:
    - **Title** — a short summary (e.g. "CSV export returns a 500").
@@ -91,14 +92,12 @@ organization, with their live Linear status. It refreshes on its own every few
 seconds, so a status change made by the team shows up without a reload.
 
 The requester is also notified in Slack when the Linear team updates the issue
-or adds, edits, or removes a comment. Slack-created requests are updated in the
+or shares a reply. Slack-created requests are updated in the
 original thread; web-created requests are sent to the requester's LinearDesk
 App Home conversation. Slack and LinearDesk must use the same email address for
 the requester to be found.
 
-Your request list is shared across your customer organization. Other approved
-users from the same organization can see tickets filed under your company's
-approved domains, and you can see theirs.
+Your request list is shared with the other members of your customer organization.
 
 - **Active / Done filter** — the list shows **Active** requests by default.
   Switch to **Done** to see finished ones (Done, Canceled, Duplicate).
@@ -131,11 +130,12 @@ actions you can take.
 
 Use the **reply** box on the request page to add information — a new clue, an
 answer to a question, another screenshot's context. Your reply is posted as a
-comment on the Linear issue, and the team's replies in Linear show up here under
-**Activity**.
+comment on the Linear issue. Updates the support team shares with your company
+also appear under **Activity**.
 
 Use **Reply attachments** to add screenshots, or paste an image directly into
-the reply. Images in portal and Linear comments are shown in the Activity feed.
+the reply. Images in your replies and shared support updates appear in the
+Activity feed.
 
 ### Editing a request
 
@@ -174,8 +174,8 @@ Linear account — the portal is your view into it:
 
 - The status on your list and request page is the **real Linear status**,
   updated live as the team moves the issue along.
-- Your replies become Linear comments, and Linear comments show up in your
-  Activity feed.
+- Your replies become Linear comments. Support updates shared with your company
+  appear in your Activity feed.
 - Screenshots you attach are uploaded to the Linear issue.
 
 ---

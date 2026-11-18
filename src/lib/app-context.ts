@@ -27,13 +27,14 @@ type MagicLinkInput = {
   errorCallbackURL: string
 }
 
-type MagicLinkResult = {
+type SignInResult = {
   error?: unknown
 }
 
 type SocialSignInInput = {
   provider: "google"
   callbackURL: string
+  errorCallbackURL?: string
 }
 
 export type HelpdeskApiClient = {
@@ -61,8 +62,8 @@ export type HelpdeskApiClient = {
 export type PortalAuthClient = {
   signOut: () => Promise<unknown> | unknown
   signIn: {
-    magicLink: (input: MagicLinkInput) => Promise<MagicLinkResult | void>
-    social: (input: SocialSignInInput) => Promise<unknown> | unknown
+    magicLink: (input: MagicLinkInput) => Promise<SignInResult | void>
+    social: (input: SocialSignInInput) => Promise<SignInResult | void>
   }
 }
 

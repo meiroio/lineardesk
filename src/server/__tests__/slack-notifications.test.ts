@@ -46,7 +46,7 @@ describe("notifyRequestCreator", () => {
           linearIssueId: "issue-1",
           actorName: "Grace Hopper",
           commentId: "comment-1",
-          body: "Fixed in staging. Please retry.",
+          body: "[client]\n\nFixed in staging. Please retry.",
         },
       })
     ).resolves.toBe(true)
@@ -59,6 +59,40 @@ describe("notifyRequestCreator", () => {
       ),
     })
   })
+
+  it.each([
+    { action: "create", body: "Private notes from Linear" },
+    { action: "update", body: "This comment is now private" },
+    { action: "update", body: null },
+    { action: "remove", body: "[client]\n\nFormerly shared" },
+  ] as const)(
+    "does not send an unshareable $action to Slack",
+    async ({ action, body }) => {
+      const slack = {
+        findUserIdByEmail: vi.fn(async () => "U1"),
+        postMessage: vi.fn(async () => ({ channel: "C1", ts: "124" })),
+      }
+
+      await expect(
+        notifyRequestCreator({
+          slack,
+          request,
+          baseUrl: "https://desk.example.com",
+          change: {
+            kind: "comment",
+            action,
+            linearIssueId: "issue-1",
+            actorName: "Grace Hopper",
+            commentId: "comment-1",
+            body,
+          },
+        })
+      ).resolves.toBe(false)
+
+      expect(slack.findUserIdByEmail).not.toHaveBeenCalled()
+      expect(slack.postMessage).not.toHaveBeenCalled()
+    }
+  )
 
   it("sends web-created request notifications to the creator's Slack App Home", async () => {
     const postMessage = vi.fn(async () => ({ channel: "U1", ts: "124" }))

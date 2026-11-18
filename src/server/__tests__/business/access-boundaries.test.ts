@@ -48,7 +48,7 @@ describe("customer request access and boundary flows", () => {
 
     const outsiderSession = world.signIn({
       id: "user-outsider",
-      email: "outsider@unknown.test",
+      email: "outsider@example.com",
     })
     const forbiddenResponse = await world.postJson(
       "/requests",
@@ -80,6 +80,7 @@ describe("customer request access and boundary flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
 
     const invalidCreateResponse = await world.postJson(
@@ -126,6 +127,7 @@ describe("customer request access and boundary flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
     const created = await createRequest(world, session)
 

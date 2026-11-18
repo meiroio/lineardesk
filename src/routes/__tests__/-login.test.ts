@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   getMagicLinkStatus,
+  InvitationAcceptance,
   isCurrentMagicLinkRequest,
   LoginScreen,
   parseLoginReason,
@@ -47,6 +48,19 @@ describe("login route helpers", () => {
     )
     expect(parseLoginReason("unauthorized")).toBe("unauthorized")
     expect(parseLoginReason("unexpected")).toBeUndefined()
+  })
+
+  it("returns to the invitation after verifying a magic link or hitting an error", async () => {
+    const signInMagicLink = vi.fn(async () => ({}))
+
+    await expect(
+      getMagicLinkStatus(signInMagicLink, "person@example.com", "invite&test")
+    ).resolves.toBe("sent")
+    expect(signInMagicLink).toHaveBeenCalledWith({
+      email: "person@example.com",
+      callbackURL: "/login?invitationId=invite%26test",
+      errorCallbackURL: "/login?invitationId=invite%26test",
+    })
   })
 
   it("rejects stale magic-link responses after the input or active request changes", () => {
@@ -98,10 +112,53 @@ describe("login route UI", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /you can close this tab, your login link is in the email/i
+          /if this address has access, you’ll receive a sign-in link/i
         )
       ).toBeTruthy()
     })
+  })
+
+  it("returns to the invitation after Google sign-in", async () => {
+    const signInSocial = vi.fn(async () => ({}))
+    renderLoginRoute({ invitationId: "invite-123", signInSocial })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i })
+    )
+
+    await waitFor(() => {
+      expect(signInSocial).toHaveBeenCalledWith({
+        provider: "google",
+        callbackURL: "/login?invitationId=invite-123",
+        errorCallbackURL: "/login?invitationId=invite-123",
+      })
+    })
+  })
+
+  it("shows which account will accept and allows switching after a failure", async () => {
+    const accept = vi.fn(async () => {
+      throw new Error("The recipient did not match")
+    })
+    const signOut = vi.fn(async () => undefined)
+    render(
+      createElement(InvitationAcceptance, {
+        email: "other@example.com",
+        accept,
+        signOut,
+      })
+    )
+
+    expect(screen.getByText("other@example.com")).toBeTruthy()
+    expect(accept).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: /accept invitation/i }))
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /could not be accepted/i
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /use a different email/i })
+    )
+    expect(signOut).toHaveBeenCalledOnce()
   })
 })
 

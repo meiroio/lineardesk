@@ -41,7 +41,6 @@ const readAppConfig = vi.fn(() => config)
 const hasBetterAuthSessionCookie = vi.fn(() => true)
 const orgAccess = {
   findActiveOrganizationForEmail: vi.fn(),
-  ensureMember: vi.fn(),
   listMembershipsForUser: vi.fn(),
   hasMembership: vi.fn(),
   setActiveOrganizationForSession: vi.fn(),

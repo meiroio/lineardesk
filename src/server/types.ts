@@ -69,11 +69,6 @@ export type OrgAccessRepository = {
   findActiveOrganizationForEmail: (
     email: string
   ) => Promise<OrganizationAccessRecord | null>
-  ensureMember: (input: {
-    userId: string
-    organizationId: string
-    role: "member" | "admin" | "owner"
-  }) => Promise<void>
   listMembershipsForUser: (
     userId: string
   ) => Promise<OrganizationMembershipRecord[]>
@@ -355,7 +350,6 @@ export type VerifyWebhook = (input: {
 export type AuthBridge = {
   handler?: (request: Request) => Promise<Response> | Response
   getSession: (headers: Headers) => Promise<AuthSession | null>
-  sendMagicLinkForTest?: (email: string, url: string) => Promise<void>
 }
 
 export type TicketDraft = {

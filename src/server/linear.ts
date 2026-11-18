@@ -14,6 +14,7 @@ import type {
   LinearTeamSnapshot,
   LinearIssueAssignment,
   LinearAssigneeSnapshot,
+  RequestRecord,
   UploadAssetInput,
   UploadAssetResult,
 } from "./types"
@@ -51,8 +52,14 @@ type LinearTeamsResponse = {
   }
 }
 type LinearCommentAuthor = {
+  id?: string | null
   displayName?: string | null
   name?: string | null
+}
+type LinearCommentBody = {
+  body: string
+  botActor?: { id?: string | null } | null
+  user?: { id?: string | null } | null
 }
 type LinearCommentData = {
   id: string
@@ -62,8 +69,9 @@ type LinearCommentData = {
   user?: LinearCommentAuthor | PromiseLike<LinearCommentAuthor | null> | null
 }
 type LinearCommentsResponse = {
+  viewer?: { id: string } | null
   comments: {
-    nodes: LinearCommentData[]
+    nodes: Array<LinearCommentData & LinearCommentBody>
     pageInfo: { hasNextPage: boolean; endCursor: string | null }
   }
 }
@@ -80,6 +88,7 @@ const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
 const LINEAR_OAUTH_SCOPE = "read,write"
 const LINEAR_TOKEN_REFRESH_BUFFER_MS = 60_000
 const MAX_LINEAR_IMAGE_BYTES = 20 * 1024 * 1024
+const CLIENT_COMMENT_HEADER = "[client]"
 
 export function selectWorkflowStateByName<T extends WorkflowStateCandidate>(
   states: readonly T[],
@@ -139,6 +148,37 @@ export function getDetailsCommentMarker(issueId: string) {
   return `LinearDesk details comment: ${issueId}`
 }
 
+export function getSharedLinearCommentBody(
+  request: Pick<RequestRecord, "linearIssueId" | "linearDetailsCommentId">,
+  { id, body }: { id: string | null; body: string | null }
+) {
+  if (
+    !id ||
+    !body ||
+    id === request.linearDetailsCommentId ||
+    body.includes(getDetailsCommentMarker(request.linearIssueId))
+  ) {
+    return null
+  }
+
+  // Linear's Markdown serializer can escape the brackets in plain text.
+  const header = /^\\?\[client\\?\][ \t]*\r?\n(?:[ \t]*\r?\n)?/.exec(body)
+  return header ? body.slice(header[0].length) || null : null
+}
+
+function markLegacyRequesterReply(comment: LinearCommentBody, appId?: string) {
+  const authoredByApp =
+    appId && (comment.botActor?.id === appId || comment.user?.id === appId)
+  if (
+    authoredByApp &&
+    /^Requester: [^\s@]+@[^\s@]+\r?\n\r?\n/.test(comment.body)
+  ) {
+    return `${CLIENT_COMMENT_HEADER}\n\n${comment.body}`
+  }
+
+  return comment.body
+}
+
 export function buildLinearIssueInput(input: {
   title: string
   description: string
@@ -165,7 +205,7 @@ export function buildRequesterReplyCommentBody(input: {
   requesterEmail: string
   body: string
 }) {
-  return `Requester: ${input.requesterEmail}\n\n${input.body}`
+  return `${CLIENT_COMMENT_HEADER}\n\nRequester: ${input.requesterEmail}\n\n${input.body}`
 }
 
 export function createLinearGateway(
@@ -376,27 +416,31 @@ class LinearSdkGateway implements LinearGateway {
     const snapshots: LinearIssueCommentSnapshot[] = []
     let after: string | null = null
     do {
-      const { comments }: LinearCommentsResponse = await client.client.request<
-        LinearCommentsResponse,
-        { issueId: string; after: string | null }
-      >(
+      const response: LinearCommentsResponse = await client.client.request(
         `query LinearDeskComments($issueId: ID!, $after: String) {
+          viewer { id }
           comments(first: 50, after: $after, filter: { issue: { id: { eq: $issueId } } }) {
             nodes {
               id
               body
               createdAt
-              botActor { userDisplayName name }
-              user { displayName name }
+              botActor { id userDisplayName name }
+              user { id displayName name }
             }
             pageInfo { hasNextPage endCursor }
           }
         }`,
         { issueId, after }
       )
+      const { comments, viewer } = response
       snapshots.push(
         ...(await Promise.all(
-          comments.nodes.map((comment) => this.toIssueCommentSnapshot(comment))
+          comments.nodes.map((comment) =>
+            this.toIssueCommentSnapshot(
+              comment,
+              markLegacyRequesterReply(comment, viewer?.id)
+            )
+          )
         ))
       )
       after = comments.pageInfo.hasNextPage ? comments.pageInfo.endCursor : null
@@ -412,21 +456,26 @@ class LinearSdkGateway implements LinearGateway {
     commentId: string
   ): Promise<string | null> {
     const client = await this.getClient()
-    const { comments } = await client.client.request<
-      { comments: { nodes: Array<{ body: string }> } },
+    const { comments, viewer } = await client.client.request<
+      {
+        viewer?: { id: string } | null
+        comments: { nodes: LinearCommentBody[] }
+      },
       { issueId: string; commentId: string }
     >(
       `query LinearDeskCommentBody($issueId: ID!, $commentId: ID!) {
+        viewer { id }
         comments(first: 1, filter: {
           id: { eq: $commentId }
           issue: { id: { eq: $issueId } }
         }) {
-          nodes { body }
+          nodes { body botActor { id } user { id } }
         }
       }`,
       { issueId, commentId }
     )
-    return comments.nodes[0]?.body ?? null
+    const comment = comments.nodes.at(0)
+    return comment ? markLegacyRequesterReply(comment, viewer?.id) : null
   }
 
   async createIssueComment(
@@ -595,7 +644,8 @@ class LinearSdkGateway implements LinearGateway {
   }
 
   private async toIssueCommentSnapshot(
-    comment: LinearCommentData
+    comment: LinearCommentData,
+    body = comment.body
   ): Promise<LinearIssueCommentSnapshot> {
     let authorName =
       comment.botActor?.userDisplayName || comment.botActor?.name || null
@@ -611,7 +661,7 @@ class LinearSdkGateway implements LinearGateway {
 
     return {
       id: comment.id,
-      body: comment.body,
+      body,
       authorName: authorName || "Linear",
       createdAt: new Date(comment.createdAt),
     }

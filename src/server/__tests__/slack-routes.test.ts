@@ -114,7 +114,6 @@ function makeOrgAccess(): OrgAccessRepository {
       organizationSlug: "example",
       domain: "example.com",
     })),
-    ensureMember: vi.fn(async () => undefined),
     listMembershipsForUser: vi.fn(async () => []),
     hasMembership: vi.fn(async () => true),
     setActiveOrganizationForSession: vi.fn(async () => undefined),

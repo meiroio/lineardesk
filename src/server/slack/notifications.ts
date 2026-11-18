@@ -1,3 +1,4 @@
+import { getSharedLinearCommentBody } from "../linear"
 import type { LinearWebhookChange } from "../webhooks"
 import type { RequestRecord, SlackGateway } from "../types"
 
@@ -7,27 +8,32 @@ export async function notifyRequestCreator(input: {
   change: LinearWebhookChange
   baseUrl: string
 }): Promise<boolean> {
-  const userId = await input.slack.findUserIdByEmail(
-    input.request.requesterEmail
-  )
+  const { request, slack, baseUrl } = input
+  let { change } = input
+  if (change.kind === "comment") {
+    if (change.action === "remove") return false
+    const body = getSharedLinearCommentBody(request, {
+      id: change.commentId,
+      body: change.body,
+    })
+    if (!body) return false
+    change = { ...change, body }
+  }
+
+  const userId = await slack.findUserIdByEmail(request.requesterEmail)
   if (!userId) return false
 
   const message = {
-    text: formatNotification(
-      input.request,
-      input.change,
-      input.baseUrl,
-      userId
-    ),
-    channel: input.request.slackChannelId ?? userId,
-    threadTs: input.request.slackMessageTs || undefined,
+    text: formatNotification(request, change, baseUrl, userId),
+    channel: request.slackChannelId ?? userId,
+    threadTs: request.slackMessageTs || undefined,
   }
 
   try {
-    await input.slack.postMessage(message)
+    await slack.postMessage(message)
   } catch (error) {
     if (message.channel === userId) throw error
-    await input.slack.postMessage({ channel: userId, text: message.text })
+    await slack.postMessage({ channel: userId, text: message.text })
   }
 
   return true
@@ -46,10 +52,6 @@ function formatNotification(
     : "Someone in Linear"
 
   if (change.kind === "comment") {
-    if (change.action === "remove") {
-      return `<@${userId}> ${actor} removed a comment from ${issue}. ${link}`
-    }
-
     const verb = change.action === "update" ? "updated a comment" : "commented"
     const excerpt = change.body
       ? `\n>${escapeSlackText(change.body.slice(0, 800)).replaceAll("\n", "\n>")}`

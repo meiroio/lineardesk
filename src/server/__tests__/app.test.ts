@@ -141,7 +141,6 @@ function makeOrgAccess() {
       organizationSlug: "example",
       domain: "example.com",
     })),
-    ensureMember: vi.fn(async () => undefined),
     listMembershipsForUser: vi.fn(async () => []),
     hasMembership: vi.fn(async () => true),
     setActiveOrganizationForSession: vi.fn(async () => undefined),
@@ -510,7 +509,7 @@ describe("createApiApp", () => {
     expect(repo.listRequestsForOrganization).not.toHaveBeenCalled()
   })
 
-  it("notifies the request creator when a Linear user comments", async () => {
+  it("notifies the request creator when a Linear user shares a comment", async () => {
     const repo = makeRepo()
     vi.mocked(repo.getRequestByLinearIssueId).mockResolvedValue(
       makeRecord({
@@ -539,7 +538,7 @@ describe("createApiApp", () => {
         data: {
           id: "comment-2",
           issueId: "linear-issue-id",
-          body: "Please try the fix in staging.",
+          body: "[client]\n\nPlease try the fix in staging.",
         },
       })),
     })
@@ -557,6 +556,9 @@ describe("createApiApp", () => {
       threadTs: "123.45",
       text: expect.stringContaining("Please try the fix in staging."),
     })
+    expect(slack.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining("[client]") })
+    )
     expect(repo.applyWebhookEvent).toHaveBeenCalledWith({
       eventKey: expect.any(String),
       linearIssueId: "linear-issue-id",
@@ -565,16 +567,28 @@ describe("createApiApp", () => {
     })
   })
 
-  it("returns Linear comments with a request detail", async () => {
+  it("returns only shared Linear comments with a request detail", async () => {
     const repo = makeRepo()
     const linear = {
       ...makeLinear(),
       listIssueComments: vi.fn(async () => [
         {
           id: "activity-comment",
-          body: "Is it? Where? What?",
+          body: "\\[client\\]\r\n\r\nIs it? Where? What?",
           authorName: "adam.sobotka",
           createdAt: new Date("2026-01-01T00:30:00.000Z"),
+        },
+        {
+          id: "internal-comment",
+          body: "Internal notes\n\n[client]\n\nMentioning the marker in the body stays private.",
+          authorName: "Staff",
+          createdAt: new Date("2026-01-01T00:31:00.000Z"),
+        },
+        {
+          id: "unverified-legacy-comment",
+          body: "Requester: person@example.com\n\nPrivate notes about the requester.",
+          authorName: "Desk",
+          createdAt: new Date("2026-01-01T00:32:00.000Z"),
         },
       ]),
     }
@@ -617,7 +631,7 @@ describe("createApiApp", () => {
       ...makeLinear(),
       createIssueComment: vi.fn(async () => ({
         id: "reply-id",
-        body: "Requester: person@example.com\n\nIs it still broken?",
+        body: "[client]\n\nRequester: person@example.com\n\nIs it still broken?",
         authorName: "Desk",
         createdAt: new Date("2026-01-01T00:45:00.000Z"),
       })),
@@ -649,7 +663,7 @@ describe("createApiApp", () => {
     })
     expect(linear.createIssueComment).toHaveBeenCalledWith({
       issueId: "linear-issue-id",
-      body: "Requester: person@example.com\n\nIs it still broken?",
+      body: "[client]\n\nRequester: person@example.com\n\nIs it still broken?",
     })
     expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
       "request-id",
@@ -664,13 +678,19 @@ describe("createApiApp", () => {
       listIssueComments: vi.fn(async () => [
         {
           id: "comment-id",
-          body: "Requester: person@example.com\n\n---\nLinearDesk details comment: linear-issue-id",
+          body: "[client]\n\nDetails comment (known ID)",
+          authorName: "Desk",
+          createdAt: new Date("2026-01-01T00:05:00.000Z"),
+        },
+        {
+          id: "older-details-comment-id",
+          body: "[client]\n\nRequester: person@example.com\n\n---\nLinearDesk details comment: linear-issue-id",
           authorName: "Desk",
           createdAt: new Date("2026-01-01T00:10:00.000Z"),
         },
         {
           id: "activity-comment",
-          body: "A real reply",
+          body: "[client]\n\nA real reply",
           authorName: "Agent",
           createdAt: new Date("2026-01-01T00:30:00.000Z"),
         },
@@ -1032,11 +1052,11 @@ describe("GET /api/requests/:id/assets", () => {
     expect(linear.downloadAsset).not.toHaveBeenCalled()
   })
 
-  it("proxies an image referenced by a Linear comment", async () => {
+  it("proxies an image referenced by a shared Linear comment", async () => {
     const linear = {
       ...makeLinear(),
       getIssueCommentBody: vi.fn(
-        async () => `More evidence\n![shot](${assetUrl})`
+        async () => `[client]\n\nMore evidence\n![shot](${assetUrl})`
       ),
       downloadAsset: vi.fn(async () => ({
         bytes: new Uint8Array([4, 5, 6]),
@@ -1058,6 +1078,7 @@ describe("GET /api/requests/:id/assets", () => {
     )
 
     expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
     expect(linear.downloadAsset).toHaveBeenCalledWith(assetUrl)
     expect(linear.getIssueCommentBody).toHaveBeenCalledWith(
       "linear-issue-id",
@@ -1066,8 +1087,12 @@ describe("GET /api/requests/:id/assets", () => {
     expect(linear.listIssueComments).not.toHaveBeenCalled()
   })
 
-  it.each([null, "A comment with no image"])(
-    "rejects an asset without an owning comment (%s)",
+  it.each([
+    null,
+    "[client]\n\nA comment with no image",
+    `Internal notes\n![shot](${assetUrl})`,
+  ])(
+    "rejects an asset without a shared comment referencing it (%s)",
     async (body) => {
       const linear = {
         ...makeLinear(),

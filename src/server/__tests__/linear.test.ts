@@ -79,7 +79,7 @@ describe("buildRequesterReplyCommentBody", () => {
         requesterEmail: "person@example.com",
         body: "Is it still broken?",
       })
-    ).toBe("Requester: person@example.com\n\nIs it still broken?")
+    ).toBe("[client]\n\nRequester: person@example.com\n\nIs it still broken?")
   })
 })
 

@@ -16,6 +16,7 @@ describe("customer request business flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
       name: "Ada Lovelace",
     })
 
@@ -120,10 +121,12 @@ describe("customer request business flows", () => {
     const acmeSession = world.signIn({
       id: "user-acme",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
     const betaSession = world.signIn({
       id: "user-beta",
       email: "bea@beta.test",
+      activeOrganizationId: "org-beta",
     })
 
     const createResponse = await world.postJson(
@@ -169,6 +172,7 @@ describe("customer request business flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
 
     const createResponse = await world.postJson(
@@ -253,6 +257,7 @@ describe("customer request business flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
 
     const createResponse = await world.postJson(
@@ -313,6 +318,7 @@ describe("customer request business flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
 
     const createResponse = await world.postJson(
@@ -405,6 +411,7 @@ describe("customer request business flows", () => {
     const session = world.signIn({
       id: "user-ada",
       email: "ada@example.com",
+      activeOrganizationId: "org-acme",
     })
     const listResponse = await world.get("/requests", session)
     await expect(listResponse.json()).resolves.toMatchObject({

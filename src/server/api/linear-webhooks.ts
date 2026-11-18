@@ -50,15 +50,7 @@ export function createLinearWebhooksApi(
           ? await deps.repo.getRequestByLinearIssueId(linearIssueId)
           : null
 
-      if (
-        deps.slack &&
-        record &&
-        change &&
-        !(
-          change.kind === "comment" &&
-          change.commentId === record.linearDetailsCommentId
-        )
-      ) {
+      if (deps.slack && record && change) {
         await scheduleBackground(
           request,
           notifyRequestCreator({

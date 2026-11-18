@@ -1,3 +1,4 @@
+import { getSharedLinearCommentBody } from "../linear"
 import { resolvePortalOrganization } from "../org-access"
 import type {
   AuthSession,
@@ -54,7 +55,10 @@ export function serializeRequest(
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     lastLinearSyncedAt: record.lastLinearSyncedAt.toISOString(),
-    comments: comments?.map(serializeLinearComment),
+    comments: comments?.flatMap((comment) => {
+      const body = getSharedLinearCommentBody(record, comment)
+      return body ? [serializeLinearComment({ ...comment, body })] : []
+    }),
   }
 }
 

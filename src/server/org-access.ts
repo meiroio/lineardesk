@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto"
-
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import type { NodePgDatabase } from "drizzle-orm/node-postgres"
 
 import { getDb } from "./db/client"
 import type * as schema from "./db/schema"
 import {
+  authInvitations,
   authMembers,
   authOrganizations,
   authSessions,
@@ -77,6 +76,50 @@ export function createOrgAccessRepository(
   return new DrizzleOrgAccessRepository(db)
 }
 
+export async function lockOrganizationInvitation(
+  tx: Pick<Database, "execute">,
+  organizationId: string,
+  email: string
+): Promise<void> {
+  const key = `lineardesk-invitation:${organizationId}:${email.trim().toLowerCase()}`
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`
+  )
+}
+
+export function withOrganizationInvitationLock(
+  invitationId: string,
+  email: string,
+  accept: () => Promise<Response>,
+  db: Database = getDb()
+): Promise<Response | null> {
+  return db.transaction(async (tx) => {
+    const invitations = await tx
+      .select({
+        organizationId: authInvitations.organizationId,
+        email: authInvitations.email,
+      })
+      .from(authInvitations)
+      .where(
+        and(
+          eq(authInvitations.id, invitationId),
+          eq(authInvitations.email, email)
+        )
+      )
+      .limit(1)
+    const invitation = invitations.at(0)
+    if (!invitation) return null
+
+    await lockOrganizationInvitation(
+      tx,
+      invitation.organizationId,
+      invitation.email
+    )
+    // Better Auth reads and writes through its own pool under this lock.
+    return accept()
+  })
+}
+
 class DrizzleOrgAccessRepository implements OrgAccessRepository {
   constructor(private readonly db: Database) {}
 
@@ -107,24 +150,6 @@ class DrizzleOrgAccessRepository implements OrgAccessRepository {
       .limit(1)
 
     return rows[0] ?? null
-  }
-
-  async ensureMember(input: {
-    userId: string
-    organizationId: string
-    role: "member" | "admin" | "owner"
-  }) {
-    await this.db
-      .insert(authMembers)
-      .values({
-        id: randomUUID(),
-        organizationId: input.organizationId,
-        userId: input.userId,
-        role: input.role,
-      })
-      .onConflictDoNothing({
-        target: [authMembers.organizationId, authMembers.userId],
-      })
   }
 
   async listMembershipsForUser(
@@ -181,24 +206,9 @@ export async function resolvePortalOrganization(
     return { status: "ok", organizationId: session.activeOrganizationId }
   }
 
-  const domainOrg = await orgAccess.findActiveOrganizationForEmail(
-    session.user.email
-  )
-  if (domainOrg) {
-    await orgAccess.ensureMember({
-      userId: session.user.id,
-      organizationId: domainOrg.organizationId,
-      role: "member",
-    })
-  }
-
   const memberships = await orgAccess.listMembershipsForUser(session.user.id)
-  const availableMemberships = domainOrg
-    ? includeMembership(memberships, domainOrg.organizationId)
-    : memberships
-
-  if (availableMemberships.length === 1) {
-    const [membership] = availableMemberships
+  if (memberships.length === 1) {
+    const [membership] = memberships
     if (session.sessionToken) {
       await orgAccess.setActiveOrganizationForSession({
         sessionToken: session.sessionToken,
@@ -207,24 +217,9 @@ export async function resolvePortalOrganization(
     }
     return { status: "ok", organizationId: membership.organizationId }
   }
-  if (availableMemberships.length > 1) {
+  if (memberships.length > 1) {
     return { status: "multiple_organizations" }
   }
 
   return { status: "forbidden" }
-}
-
-function includeMembership(
-  memberships: OrganizationMembershipRecord[],
-  organizationId: string
-): OrganizationMembershipRecord[] {
-  if (
-    memberships.some(
-      (membership) => membership.organizationId === organizationId
-    )
-  ) {
-    return memberships
-  }
-
-  return [...memberships, { organizationId, role: "member" }]
 }

@@ -3,7 +3,7 @@ import { Elysia } from "elysia"
 import { markdownImages } from "../../lib/markdown-images"
 import {
   buildRequesterReplyCommentBody,
-  getDetailsCommentMarker,
+  getSharedLinearCommentBody,
 } from "../linear"
 import {
   parseCreateCommentInput,
@@ -201,14 +201,8 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
         )
         if (!record) return status(404, { error: "not_found" })
 
-        const allComments = await deps.linear.listIssueComments(
+        const comments = await deps.linear.listIssueComments(
           record.linearIssueId
-        )
-        const detailsMarker = getDetailsCommentMarker(record.linearIssueId)
-        const comments = allComments.filter(
-          (comment) =>
-            comment.id !== record.linearDetailsCommentId &&
-            !comment.body.includes(detailsMarker)
         )
 
         return { request: serializeRequest(record, comments) }
@@ -246,16 +240,24 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
         const descriptionHasAsset = markdownImages(record.description).some(
           (image) => image.url === assetUrl
         )
+        const commentId =
+          typeof query.commentId === "string" ? query.commentId : null
         const commentBody =
-          !descriptionHasAsset && typeof query.commentId === "string"
+          !descriptionHasAsset &&
+          commentId &&
+          commentId !== record.linearDetailsCommentId
             ? await deps.linear.getIssueCommentBody(
                 record.linearIssueId,
-                query.commentId
+                commentId
               )
             : null
+        const sharedBody = getSharedLinearCommentBody(record, {
+          id: commentId,
+          body: commentBody,
+        })
         const commentHasAsset =
-          commentBody !== null &&
-          markdownImages(commentBody).some((image) => image.url === assetUrl)
+          sharedBody !== null &&
+          markdownImages(sharedBody).some((image) => image.url === assetUrl)
         if (!descriptionHasAsset && !commentHasAsset) {
           return status(404, { error: "not_found" })
         }
@@ -264,7 +266,9 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           const asset = await deps.linear.downloadAsset(assetUrl)
           return new Response(asset.bytes as BodyInit, {
             headers: {
-              "cache-control": "private, max-age=3600",
+              "cache-control": descriptionHasAsset
+                ? "private, max-age=3600"
+                : "private, no-store",
               "content-type": asset.contentType,
               "x-content-type-options": "nosniff",
             },
@@ -315,7 +319,11 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           }),
         })
 
-        return status(201, { comment: serializeLinearComment(comment) })
+        const sharedBody =
+          getSharedLinearCommentBody(record, comment) ?? input.body
+        return status(201, {
+          comment: serializeLinearComment({ ...comment, body: sharedBody }),
+        })
       },
       {
         body: CreateCommentBodyModel,

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { eq } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/node-postgres"
 import { migrate } from "drizzle-orm/node-postgres/migrator"
 import { Pool } from "pg"
@@ -15,6 +16,10 @@ import {
   vi,
 } from "vitest"
 
+import {
+  readCustomerAccessArgs,
+  updateCustomerAccess,
+} from "../../../scripts/manage-customer-access"
 import * as schema from "../db/schema"
 import { reconcileOpenRequests } from "../reconcile"
 import { createHelpdeskRepository } from "../repository"
@@ -28,6 +33,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
   const databaseName = `lineardesk_test_${randomUUID().replaceAll("-", "")}`
   let maintenance: Pool | undefined
   let pool: Pool
+  let db: ReturnType<typeof drizzle<typeof schema>>
   let repo: HelpdeskRepository
   let created = false
 
@@ -41,7 +47,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
     expect(
       (await pool.query("SELECT current_database() AS name")).rows[0].name
     ).toBe(databaseName)
-    const db = drizzle(pool, { schema })
+    db = drizzle(pool, { schema })
     await migrate(db, {
       migrationsFolder: fileURLToPath(
         new URL("../../../drizzle", import.meta.url)
@@ -61,6 +67,113 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       "TRUNCATE helpdesk_requests, linear_webhook_events, slack_events"
     )
     await pool.query('DELETE FROM "organization"')
+  })
+
+  it("reuses a named invite and revokes access only in the selected organization", async () => {
+    await db.insert(schema.authOrganizations).values([
+      { id: "org-a", slug: "org-a", name: "Customer A" },
+      { id: "org-b", slug: "org-b", name: "Customer B" },
+    ])
+    await db.insert(schema.authUsers).values([
+      { id: "user-operator", email: "operator@example.com", name: "Operator" },
+      { id: "user-client", email: "client@example.com", name: "Client" },
+    ])
+    const invite = readCustomerAccessArgs([
+      "invite",
+      "org-a",
+      " Client@Example.com ",
+      "Operator@Example.com",
+    ])
+    const [first, retry] = await Promise.all([
+      updateCustomerAccess(db, invite),
+      updateCustomerAccess(db, invite),
+    ])
+    expect(retry).toEqual(first)
+    const pending = await db.select().from(schema.authInvitations)
+    expect(pending).toMatchObject([
+      {
+        email: "client@example.com",
+        inviterId: "user-operator",
+        organizationId: "org-a",
+        role: "member",
+        status: "pending",
+      },
+    ])
+
+    await db.insert(schema.authMembers).values([
+      { id: "member-a", organizationId: "org-a", userId: "user-client" },
+      { id: "member-b", organizationId: "org-b", userId: "user-client" },
+    ])
+    await expect(updateCustomerAccess(db, invite)).rejects.toThrow(
+      "already a member"
+    )
+    await expect(
+      updateCustomerAccess(
+        db,
+        readCustomerAccessArgs(["revoke", "org-a", "Client@Example.com"])
+      )
+    ).resolves.toEqual({
+      action: "revoke",
+      canceledInvitations: 1,
+      removedMemberships: 1,
+    })
+    await expect(db.select().from(schema.authMembers)).resolves.toMatchObject([
+      { id: "member-b" },
+    ])
+    await expect(
+      db.select().from(schema.authInvitations)
+    ).resolves.toMatchObject([{ status: "canceled" }])
+  })
+
+  it("allows an unverified first operator to self-invite without granting access", async () => {
+    await db.insert(schema.authOrganizations).values([
+      { id: "org-a", slug: "org-a", name: "Customer A" },
+      { id: "org-b", slug: "org-b", name: "Customer B" },
+    ])
+    const email = "first-operator@example.com"
+    await expect(
+      updateCustomerAccess(
+        db,
+        readCustomerAccessArgs(["invite", "org-a", "client@example.com", email])
+      )
+    ).rejects.toThrow("Operator email must belong to an existing user")
+
+    await Promise.all(
+      ["org-a", "org-b"].map((organization) =>
+        updateCustomerAccess(
+          db,
+          readCustomerAccessArgs(["invite", organization, email, email])
+        )
+      )
+    )
+
+    const operators = await db
+      .select()
+      .from(schema.authUsers)
+      .where(eq(schema.authUsers.email, email))
+    expect(operators).toMatchObject([{ emailVerified: false }])
+    const [operator] = operators
+    await expect(
+      db
+        .select()
+        .from(schema.authInvitations)
+        .orderBy(schema.authInvitations.organizationId)
+    ).resolves.toMatchObject([
+      {
+        email,
+        inviterId: operator.id,
+        organizationId: "org-a",
+        status: "pending",
+      },
+      {
+        email,
+        inviterId: operator.id,
+        organizationId: "org-b",
+        status: "pending",
+      },
+    ])
+    await expect(db.select().from(schema.authMembers)).resolves.toEqual([])
+    await expect(db.select().from(schema.authSessions)).resolves.toEqual([])
   })
 
   async function seedRequests(organizationId: string, count: number) {

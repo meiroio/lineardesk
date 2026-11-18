@@ -209,7 +209,7 @@ describe("comment queries", () => {
       await createLinearGateway(config).listIssueComments("issue-1")
 
     expect(request).toHaveBeenCalledExactlyOnceWith(
-      expect.stringContaining("user { displayName name }"),
+      expect.stringContaining("user { id displayName name }"),
       { issueId: "issue-1", after: null }
     )
     expect(comments).toHaveLength(50)
@@ -299,9 +299,44 @@ describe("comment queries", () => {
         { issueId, commentId }
       )
       expect(request.mock.calls[0][0]).toContain("id: { eq: $commentId }")
-      expect(request.mock.calls[0][0]).not.toContain("user {")
+      expect(request.mock.calls[0][0]).not.toContain("displayName")
     }
   )
+
+  it("identifies legacy portal replies by the Linear app's author ID", async () => {
+    const body = "Requester: person@example.com\n\nAn existing reply."
+    const nodes = [
+      { id: "app-comment", botActor: { id: "app-user", name: "Desk" } },
+      { id: "staff-comment", user: { id: "staff-user", name: "Desk" } },
+    ].map((comment) => ({ ...comment, body, createdAt: new Date(0) }))
+    const request = vi.fn(
+      async (_query: string, variables: { commentId?: string }) => ({
+        viewer: { id: "app-user" },
+        comments: {
+          nodes: variables.commentId
+            ? nodes.filter((comment) => comment.id === variables.commentId)
+            : nodes,
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      })
+    )
+    vi.mocked(LinearClient).mockImplementation(function () {
+      return { client: { request } } as unknown as LinearClient
+    })
+    const gateway = createLinearGateway(config)
+
+    const sharedBody = `[client]\n\n${body}`
+    await expect(gateway.listIssueComments("issue-1")).resolves.toMatchObject([
+      { id: "app-comment", body: sharedBody },
+      { id: "staff-comment", body },
+    ])
+    await expect(
+      gateway.getIssueCommentBody("issue-1", "app-comment")
+    ).resolves.toBe(sharedBody)
+    await expect(
+      gateway.getIssueCommentBody("issue-1", "staff-comment")
+    ).resolves.toBe(body)
+  })
 
   it("resolves a created comment's SDK user getter once and catches rejection", async () => {
     const user = vi.fn(() => Promise.reject(new Error("Linear rate limit")))

@@ -393,20 +393,6 @@ export function makeBusinessWorld() {
       const domain = getEmailDomain(email)
       return domain ? (organizationsByDomain.get(domain) ?? null) : null
     },
-    ensureMember: async (input) => {
-      const memberships = membershipsByUser.get(input.userId) ?? []
-      if (
-        !memberships.some(
-          (membership) => membership.organizationId === input.organizationId
-        )
-      ) {
-        memberships.push({
-          organizationId: input.organizationId,
-          role: input.role,
-        })
-      }
-      membershipsByUser.set(input.userId, memberships)
-    },
     listMembershipsForUser: async (userId) =>
       membershipsByUser.get(userId) ?? [],
     hasMembership: async (userId, organizationId) =>

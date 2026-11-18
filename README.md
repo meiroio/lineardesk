@@ -1,6 +1,6 @@
 # LinearDesk
 
-Minimal external helpdesk portal for Linear. Users authenticate with Google, submit support requests, and watch the current Linear status without needing Linear access.
+External helpdesk portal for Linear. Invited users sign in with Google or an emailed sign-in link, submit support requests, and follow their status from the portal.
 
 > **Filing or tracking a request?** See the [User Guide](docs/USER_GUIDE.md) for how to use the portal and Slack intake. The rest of this README is for developers and operators.
 
@@ -60,11 +60,11 @@ the `read` and `write` scopes.
 
 ### Customer organizations
 
-Customer access is organization-scoped. A user who signs in with a verified
-email on an approved domain becomes a member of the matching Better Auth
-organization and can see that organization's tickets.
+Customer access is invitation-only. Members share access to their organization's
+tickets. Existing memberships carry over, so review each organization's member
+list before onboarding a client.
 
-Seed a customer organization and its domains before inviting users:
+Use the following command to seed the organization and its domains.
 
 ```bash
 CUSTOMER_ORG_NAME='Acme Corp' \
@@ -73,12 +73,36 @@ CUSTOMER_EMAIL_DOMAINS='acme.com,acme.io' \
 bun run org:seed
 ```
 
-Seed domains before first sign-in, magic-link attempt, or Slack intake for those
-users.
+The domain mappings route Slack requests. The seed command also attaches
+historical unassigned tickets with matching requester email domains. Review those
+tickets before seeding an organization for a new client. The command prints any
+remaining unmapped requester emails.
 
-The seed command also backfills existing tickets whose `requester_email` domain
-matches the seeded domains. It prints any remaining unmapped requester emails;
-map those before enforcing `helpdesk_requests.organization_id` as not null.
+To grant or revoke access, run these commands with the target deployment's
+database and email configuration. The last argument to `invite` is the email of
+the LinearDesk user to record as the inviter.
+
+```bash
+bun run org:access invite acme alex@acme.com operator@example.com
+bun run org:access revoke acme alex@acme.com
+```
+
+An invitation is valid for 48 hours and must be accepted while signed in with the
+invited email. Run `invite` again with the same arguments to resend a pending
+invitation. `revoke` cancels pending invitations and removes that user's
+membership in the named organization.
+
+To set up the first operator account, pass your own email as both the recipient
+and inviter. Then verify the email and accept the invitation.
+
+### Sharing updates with clients
+
+To share a comment from Linear, put `[client]` on the first line by itself, then
+write the update below it. Clients see the update under **Activity** without the
+marker. Replies posted through the portal are shared automatically. Review older
+replies before a pilot and add the marker to any older comment that should be
+visible. Linear comments without the marker remain private unless LinearDesk can
+identify them as older portal replies.
 
 ## API
 
@@ -117,10 +141,18 @@ LinearDesk deploys to [Vercel](https://vercel.com) with a serverless [Neon](http
    - `GEMINI_API_KEY` — optional; enables AI pre-fill of the Slack ticket modal from the thread
    - `GEMINI_MODEL` — optional override; defaults to `gemini-3.5-flash`
 
-   Production deployments need a transactional email provider. LinearDesk uses
-   Resend through an internal adapter; no SMTP server is required.
+   For production email, set `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, and
+   `EMAIL_FROM` to a sender on a verified Resend domain.
 
-4. **Google OAuth** — add `https://<your-domain>/api/auth/callback/google` to the authorized redirect URIs.
+4. **Google OAuth** — set the Google Auth Platform audience to External for
+   client sign-ins. Add `https://<your-domain>/api/auth/callback/google` to the
+   authorized redirect URIs.
+
+   The invitation-only release signs existing users out once so they sign in
+   again under the new verification rules. Users with Gmail or Google Workspace
+   accounts can use Google. Other users can request an emailed link.
+   Test both sign-in methods and email delivery using the deployed origin before
+   inviting clients.
 
 5. **Linear webhook** — point the webhook URL at `https://<your-domain>/api/linear/webhook` and subscribe it to both **Issue** and **Comment** resources. This keeps request statuses current and drives Slack notifications for Linear updates.
 
@@ -157,13 +189,17 @@ Slack deliveries are claimed atomically. Failures before Linear creation release
 
 **Requester notifications**
 
-Human-authored issue updates and comment changes in Linear notify the request
+Human-authored issue updates and explicitly shared Linear comments notify the request
 creator in Slack. Tickets created from Slack are updated in their originating
 thread and mention the creator. Web-created tickets are delivered to the
 creator's LinearDesk App Home conversation after matching the portal email with
 `users.lookupByEmail`. The existing `chat:write` and `users:read.email` scopes
 in the manifest cover both paths. Changes made by LinearDesk itself are skipped
 so requesters are not notified about their own portal actions.
+
+Use the `[client]` first line to share an update with the requester. The
+notification links to the portal, where the requester can reply. Replies in
+Slack are not synced back to Linear.
 
 **Portal ticket editing**
 
