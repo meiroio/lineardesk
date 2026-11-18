@@ -13,7 +13,10 @@ const config = defineConfig({
   plugins: [
     tailwindcss(),
     tanstackStart(),
-    nitro({ preset: process.env.VERCEL ? "vercel" : "bun" }),
+    nitro({
+      preset: process.env.VERCEL ? "vercel" : "bun",
+      vercel: { functions: { regions: ["fra1"] } },
+    }),
     viteReact(),
   ],
 })
