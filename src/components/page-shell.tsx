@@ -10,7 +10,6 @@ type PageShellProps = {
   description?: string
   eyebrow?: React.ReactNode
   backLabel?: string
-  backOrganizationId?: string
   backActions?: React.ReactNode
   actions?: React.ReactNode
   topBarContent?: React.ReactNode
@@ -24,7 +23,6 @@ export function PageShell({
   description,
   eyebrow,
   backLabel,
-  backOrganizationId,
   backActions,
   actions,
   topBarContent,
@@ -48,11 +46,6 @@ export function PageShell({
             {backLabel ? (
               <Link
                 to="/"
-                search={
-                  backOrganizationId
-                    ? { organizationId: backOrganizationId }
-                    : undefined
-                }
                 className="flex items-center gap-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <RiArrowLeftLine className="size-3.5" aria-hidden />

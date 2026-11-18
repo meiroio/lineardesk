@@ -59,6 +59,7 @@ export const PortalRequestSummaryModel = t.Pick(PortalRequestModel, [
   "linearStateName",
   "linearStateType",
   "severity",
+  "organizationId",
   "createdAt",
   "updatedAt",
 ])

@@ -43,6 +43,12 @@ const session: AuthSession = {
   sessionToken: "session-token",
 }
 
+const staffSession: AuthSession = {
+  ...session,
+  user: { ...session.user, email: "agent@meiro.io" },
+  activeOrganizationId: null,
+}
+
 function makeRecord(overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     id: "request-id",
@@ -75,7 +81,7 @@ function makeRepo(): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "user-id"),
-    listRequestsForOrganization: vi.fn(async () => ({
+    listRequests: vi.fn(async () => ({
       requests: [makeRecord()],
       total: 1,
     })),
@@ -419,7 +425,7 @@ describe("createApiApp", () => {
     )
 
     expect(response.status).toBe(200)
-    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+    expect(repo.listRequests).toHaveBeenCalledWith("org-1", {
       page: 0,
       pageSize: 20,
       status: "all",
@@ -475,7 +481,7 @@ describe("createApiApp", () => {
       )
     )
     expect(response.status).toBe(200)
-    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+    expect(repo.listRequests).toHaveBeenCalledWith("org-1", {
       page: 2,
       pageSize: 10,
       status: "done",
@@ -507,7 +513,7 @@ describe("createApiApp", () => {
       new Request(`http://localhost/api/requests?${query}`)
     )
     expect(response.status).toBe(422)
-    expect(repo.listRequestsForOrganization).not.toHaveBeenCalled()
+    expect(repo.listRequests).not.toHaveBeenCalled()
   })
 
   it("notifies the request creator when a Linear user shares a comment", async () => {
@@ -812,7 +818,7 @@ describe("createApiApp", () => {
     expect(response.status).toBe(400)
   })
 
-  it("updates a request's fields for its owner", async () => {
+  it("updates a request's wording for its owner but keeps the severity", async () => {
     const repo = makeRepo()
     const linear = makeLinear()
     const app = createApiApp({
@@ -835,19 +841,24 @@ describe("createApiApp", () => {
     )
     expect(res.status).toBe(200)
     expect(linear.updateIssueFields).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Edited title", priority: 1 })
+      expect.objectContaining({
+        title: "Edited title",
+        priority: makeRecord().severity,
+      })
     )
-    expect(repo.updateRequestFields).toHaveBeenCalled()
+    expect(repo.updateRequestFields).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: makeRecord().severity })
+    )
     expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
       "request-id",
       "org-1"
     )
   })
 
-  it("atomically updates severity on open or closed requests", async () => {
+  it("lets staff update severity on any organization's open or closed request", async () => {
     const repo = makeRepo()
-    repo.getRequestForOrganization = vi.fn(async () =>
-      makeRecord({ linearStateType: "completed" })
+    repo.getOrganizationRequestById = vi.fn(async () =>
+      makeRecord({ organizationId: "org-2", linearStateType: "completed" })
     )
     const linear = makeLinear()
     const app = createApiApp({
@@ -855,7 +866,7 @@ describe("createApiApp", () => {
       repo,
       linear,
       orgAccess: makeOrgAccess(),
-      auth: { getSession: vi.fn(async () => session) },
+      auth: { getSession: vi.fn(async () => staffSession) },
     })
 
     const res = await app.fetch(
@@ -877,6 +888,31 @@ describe("createApiApp", () => {
     })
     expect(linear.updateIssueFields).not.toHaveBeenCalled()
     expect(repo.updateRequestFields).not.toHaveBeenCalled()
+  })
+
+  it("rejects severity changes from customers", async () => {
+    const repo = makeRepo()
+    const linear = makeLinear()
+    const app = createApiApp({
+      config,
+      repo,
+      linear,
+      orgAccess: makeOrgAccess(),
+      auth: { getSession: vi.fn(async () => session) },
+    })
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/severity", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ severity: 1 }),
+      })
+    )
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: "staff_only" })
+    expect(linear.updateIssuePriority).not.toHaveBeenCalled()
+    expect(repo.updateRequestSeverity).not.toHaveBeenCalled()
   })
 
   it("rejects editing a closed ticket with 409", async () => {
@@ -1201,7 +1237,7 @@ describe("team filtering and request assignment", () => {
       )
     )
     expect(response.status).toBe(200)
-    expect(repo.listRequestsForOrganization).toHaveBeenCalledWith("org-1", {
+    expect(repo.listRequests).toHaveBeenCalledWith("org-1", {
       page: 1,
       pageSize: 10,
       status: "active",
@@ -1234,6 +1270,7 @@ describe("team filtering and request assignment", () => {
   it.each(["member-1", null])(
     "persists assignment %s in Linear and returns the refreshed value",
     async (assigneeId) => {
+      vi.mocked(auth.getSession).mockResolvedValue(staffSession)
       vi.mocked(linear.updateIssueAssignee).mockImplementation(async () => {
         vi.mocked(linear.getIssueAssignment).mockResolvedValue({
           assignee: assigneeId ? member : null,
@@ -1260,6 +1297,7 @@ describe("team filtering and request assignment", () => {
   )
 
   it("rejects an assignee outside the issue's team", async () => {
+    vi.mocked(auth.getSession).mockResolvedValue(staffSession)
     const response = await app.fetch(
       new Request("http://localhost/api/requests/request-id/assignment", {
         method: "POST",
@@ -1271,34 +1309,50 @@ describe("team filtering and request assignment", () => {
     expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
   })
 
-  it.each(["GET", "POST"])(
-    "blocks %s assignment access to another organization's request",
-    async (method) => {
-      vi.mocked(repo.getRequestForOrganization).mockResolvedValue(null)
-      const response = await app.fetch(
-        new Request(
-          "http://localhost/api/requests/foreign-request/assignment",
-          {
-            method,
-            ...(method === "POST"
-              ? {
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ assigneeId: "member-1" }),
-                }
-              : {}),
-          }
-        )
-      )
-      expect(response.status).toBe(404)
-      expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
-        "foreign-request",
-        "org-1"
-      )
-      expect(linear.getIssueAssignment).not.toHaveBeenCalled()
-      expect(linear.listTeamAssignees).not.toHaveBeenCalled()
-      expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
-    }
-  )
+  it("blocks GET assignment access to another organization's request", async () => {
+    vi.mocked(repo.getRequestForOrganization).mockResolvedValue(null)
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/foreign-request/assignment")
+    )
+    expect(response.status).toBe(404)
+    expect(repo.getRequestForOrganization).toHaveBeenCalledWith(
+      "foreign-request",
+      "org-1"
+    )
+    expect(linear.getIssueAssignment).not.toHaveBeenCalled()
+    expect(linear.listTeamAssignees).not.toHaveBeenCalled()
+  })
+
+  it("rejects assignment changes from customers, even on their own request", async () => {
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/request-id/assignment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assigneeId: "member-1" }),
+      })
+    )
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: "staff_only" })
+    expect(linear.getIssueAssignment).not.toHaveBeenCalled()
+    expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
+  })
+
+  it("returns 404 when staff assign a request outside any organization", async () => {
+    vi.mocked(auth.getSession).mockResolvedValue(staffSession)
+    vi.mocked(repo.getOrganizationRequestById).mockResolvedValue(null)
+    const response = await app.fetch(
+      new Request("http://localhost/api/requests/foreign-request/assignment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assigneeId: "member-1" }),
+      })
+    )
+    expect(response.status).toBe(404)
+    expect(repo.getOrganizationRequestById).toHaveBeenCalledWith(
+      "foreign-request"
+    )
+    expect(linear.updateIssueAssignee).not.toHaveBeenCalled()
+  })
 
   it("requires authentication before filtering by team", async () => {
     vi.mocked(auth.getSession).mockResolvedValue(null)
@@ -1306,11 +1360,12 @@ describe("team filtering and request assignment", () => {
       new Request("http://localhost/api/requests?teamId=team-product")
     )
     expect(response.status).toBe(401)
-    expect(repo.listRequestsForOrganization).not.toHaveBeenCalled()
+    expect(repo.listRequests).not.toHaveBeenCalled()
   })
 
   it("can update assignment without reopening a closed request", async () => {
-    vi.mocked(repo.getRequestForOrganization).mockResolvedValue(
+    vi.mocked(auth.getSession).mockResolvedValue(staffSession)
+    vi.mocked(repo.getOrganizationRequestById).mockResolvedValue(
       makeRecord({ linearStateType: "completed" })
     )
     const response = await app.fetch(
@@ -1329,6 +1384,7 @@ describe("team filtering and request assignment", () => {
   })
 
   it("reports a failed Linear update without claiming success", async () => {
+    vi.mocked(auth.getSession).mockResolvedValue(staffSession)
     vi.mocked(linear.updateIssueAssignee).mockRejectedValue(
       new Error("private upstream details")
     )

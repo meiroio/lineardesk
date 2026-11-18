@@ -102,6 +102,7 @@ describe("getPortalAuthState", () => {
 
     await expect(getPortalAuthState()).resolves.toEqual({
       authenticated: true,
+      isStaff: false,
       organizationId: "org-1",
     })
     expect(listPortalOrganizations).not.toHaveBeenCalled()
@@ -122,6 +123,7 @@ describe("getPortalAuthState", () => {
 
     await expect(getPortalAuthState()).resolves.toEqual({
       authenticated: true,
+      isStaff: true,
       organizationId: null,
       organizations: [{ id: "org-1", name: "Customer" }],
     })

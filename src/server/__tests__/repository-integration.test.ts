@@ -233,8 +233,8 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       severity: [],
       teamId: "team-product",
     }
-    const first = await repo.listRequestsForOrganization("org-a", query)
-    const second = await repo.listRequestsForOrganization("org-a", {
+    const first = await repo.listRequests("org-a", query)
+    const second = await repo.listRequests("org-a", {
       ...query,
       page: 1,
     })
@@ -248,7 +248,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       )
     ).toEqual(["org-a-23", "org-a-1"])
     expect(
-      await repo.listRequestsForOrganization("org-a", {
+      await repo.listRequests("org-a", {
         ...query,
         teamId: "unknown-team",
       })
@@ -371,8 +371,8 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       status: "all" as const,
       severity: [],
     }
-    const first = await repo.listRequestsForOrganization("org-a", query)
-    const second = await repo.listRequestsForOrganization("org-a", {
+    const first = await repo.listRequests("org-a", query)
+    const second = await repo.listRequests("org-a", {
       ...query,
       page: 1,
     })
@@ -390,6 +390,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       "linearIdentifier",
       "linearStateName",
       "linearStateType",
+      "organizationId",
       "severity",
       "title",
       "updatedAt",
@@ -402,7 +403,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       )
     )
 
-    const active = await repo.listRequestsForOrganization("org-a", {
+    const active = await repo.listRequests("org-a", {
       ...query,
       status: "active",
       severity: [1, 3],
@@ -415,7 +416,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
           [1, 3].includes(request.severity!)
       )
     ).toBe(true)
-    const done = await repo.listRequestsForOrganization("org-a", {
+    const done = await repo.listRequests("org-a", {
       ...query,
       status: "done",
       severity: [2],
@@ -428,8 +429,16 @@ describe.skipIf(!databaseUrl)("PostgreSQL repository integration", () => {
       )
     ).toBe(true)
     await expect(
-      repo.listRequestsForOrganization("org-a", { ...query, page: 24 })
+      repo.listRequests("org-a", { ...query, page: 24 })
     ).resolves.toEqual({ requests: [], total: 1200 })
+
+    const everyOrganization = await repo.listRequests(null, query)
+    expect(everyOrganization.total).toBe(1500)
+    expect(
+      everyOrganization.requests.every((request) =>
+        ["org-a", "org-b"].includes(request.organizationId!)
+      )
+    ).toBe(true)
   })
 
   it("rotates reconciliation beyond 200 unchanged tickets without changing their updatedAt", async () => {

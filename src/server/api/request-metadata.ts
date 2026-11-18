@@ -9,8 +9,8 @@ import {
 } from "./contracts"
 import {
   getReadableRequest,
-  requireAuthorizedSession,
   requirePortalReadScope,
+  requireStaffRequest,
 } from "./http"
 
 const authErrors = {
@@ -66,17 +66,14 @@ export function createRequestMetadataApi(
       "/requests/:id/assignment",
       async ({ params, body, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requireStaffRequest(
           deps,
-          request.headers
+          request.headers,
+          params.id
         )
         if (!authorization.ok)
           return status(authorization.status, authorization.body)
-        const record = await deps.repo.getRequestForOrganization(
-          params.id,
-          authorization.session.organizationId
-        )
-        if (!record) return status(404, { error: "not_found" })
+        const { record } = authorization
         try {
           const assignment = await deps.linear.getIssueAssignment(
             record.linearIssueId

@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react"
 
 import { RequestPipeline, needsAttention } from "@/components/request-pipeline"
+import { OrganizationFilter } from "@/components/organization-filter"
 import { TeamFilter } from "@/components/team-filter"
 import { PageShell } from "@/components/page-shell"
 import { RequestList } from "@/components/request-list"
@@ -57,14 +58,11 @@ function Dashboard() {
   const { api, auth, portalAccess } = Route.useRouteContext()
   const { organizationId }: DashboardSearch = Route.useSearch()
   const { organizations } = portalAccess
-  const selectedOrganization =
-    organizations?.find(({ id }) => id === organizationId) ??
-    organizations?.find(({ id }) => id === portalAccess.organizationId) ??
-    organizations?.at(0)
-  const canWrite =
-    portalAccess.organizationId !== null &&
-    (!selectedOrganization ||
-      selectedOrganization.id === portalAccess.organizationId)
+  // Staff default to every organization; the filter narrows to one.
+  const selectedOrganization = organizations?.find(
+    ({ id }) => id === organizationId
+  )
+  const canWrite = portalAccess.organizationId !== null
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(0)
@@ -165,44 +163,24 @@ function Dashboard() {
           ? `${reviewCount} high-severity ${reviewCount === 1 ? "request is" : "requests are"} awaiting review${total > PAGE_SIZE ? " on this page" : ""}.`
           : selectedOrganization
             ? `Requests for ${selectedOrganization.name}.`
-            : "Your requests, from first report to resolution."
+            : portalAccess.isStaff
+              ? undefined
+              : "Your requests, from first report to resolution."
       }
       topBarContent={
-        <>
-          {selectedOrganization && organizations ? (
-            <select
-              aria-label="Organization"
-              className="h-9 max-w-44 rounded-[10px] border border-border bg-popover px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={selectedOrganization.id}
-              onChange={(event) => {
-                setPage(0)
-                void navigate({
-                  to: "/",
-                  search: { organizationId: event.target.value },
-                })
-              }}
-            >
-              {organizations.map(({ id, name }) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <label className="relative block w-32 sm:w-56">
-            <RiSearchLine
-              className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              aria-label="Search requests on this page"
-              placeholder="Search this page…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
-            />
-          </label>
-        </>
+        <label className="relative block w-32 sm:w-56">
+          <RiSearchLine
+            className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            aria-label="Search requests on this page"
+            placeholder="Search this page…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
+          />
+        </label>
       }
       actions={
         <>
@@ -239,7 +217,8 @@ function Dashboard() {
       ) : total === 0 &&
         statusScope === "all" &&
         severityFilter.size === 0 &&
-        !teamId ? (
+        !teamId &&
+        !selectedOrganization ? (
         <Empty className="rounded-2xl border border-dashed">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -271,6 +250,19 @@ function Dashboard() {
           </div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
+              {organizations ? (
+                <OrganizationFilter
+                  organizations={organizations}
+                  value={selectedOrganization?.id ?? ""}
+                  onChange={(next) => {
+                    setPage(0)
+                    void navigate({
+                      to: "/",
+                      search: next ? { organizationId: next } : {},
+                    })
+                  }}
+                />
+              ) : null}
               <TeamFilter
                 api={api}
                 value={teamId}
@@ -316,6 +308,11 @@ function Dashboard() {
                 <RequestList
                   requests={visibleRequests}
                   onPrefetch={prefetchRequest}
+                  organizationNames={
+                    organizations && !selectedOrganization
+                      ? new Map(organizations.map(({ id, name }) => [id, name]))
+                      : undefined
+                  }
                 />
               </div>
               {total > PAGE_SIZE ? (

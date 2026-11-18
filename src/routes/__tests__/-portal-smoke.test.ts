@@ -71,7 +71,11 @@ describe("portal route smoke", () => {
       ],
     }
     requirePortalAuth = vi.fn(async () => ({
-      portalAccess: { authenticated: true, organizationId: "org-acme" },
+      portalAccess: {
+        authenticated: true,
+        isStaff: false,
+        organizationId: "org-acme",
+      },
     }))
     fetchRequests = vi.fn(async (query: RequestListQuery) => {
       const matching = requests.filter(
@@ -91,6 +95,7 @@ describe("portal route smoke", () => {
               linearStateName,
               linearStateType,
               severity,
+              organizationId,
               updatedAt,
               createdAt,
             }) => ({
@@ -100,6 +105,7 @@ describe("portal route smoke", () => {
               linearStateName,
               linearStateType,
               severity,
+              organizationId,
               updatedAt,
               createdAt,
             })
@@ -243,7 +249,21 @@ describe("portal route smoke", () => {
     vi.clearAllMocks()
   })
 
-  it("lets staff switch organizations and browse other customers' requests read-only", async () => {
+  function signInAsStaff() {
+    requirePortalAuth.mockResolvedValue({
+      portalAccess: {
+        authenticated: true,
+        isStaff: true,
+        organizationId: "org-acme",
+        organizations: [
+          { id: "org-acme", name: "Acme" },
+          { id: "org-beta", name: "Beta" },
+        ],
+      },
+    })
+  }
+
+  it("shows staff every organization by default and lets them triage any request", async () => {
     requests.push(
       makeRequest({
         id: "request-beta",
@@ -252,41 +272,47 @@ describe("portal route smoke", () => {
         organizationId: "org-beta",
       })
     )
-    requirePortalAuth.mockResolvedValue({
-      portalAccess: {
-        authenticated: true,
-        organizationId: "org-acme",
-        organizations: [
-          { id: "org-acme", name: "Acme" },
-          { id: "org-beta", name: "Beta" },
-        ],
-      },
-    })
+    signInAsStaff()
     renderPortal("/", context)
 
     await screen.findByText("Existing CSV export failure")
+    expect(screen.getByText("Beta customer request")).toBeTruthy()
+    expect(fetchRequests).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ organizationId: expect.anything() })
+    )
+    expect(screen.getByText("Beta")).toBeTruthy()
     expect(screen.getByRole("link", { name: "New request" })).toBeTruthy()
-    fireEvent.change(screen.getByRole("combobox", { name: "Organization" }), {
-      target: { value: "org-beta" },
-    })
-    const betaRequest = await screen.findByText("Beta customer request")
-    expect(screen.queryByText("Existing CSV export failure")).toBeNull()
-    expect(screen.queryByRole("link", { name: "New request" })).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Filter by organization" })
+    )
+    fireEvent.click(await screen.findByRole("button", { name: "Beta" }))
+    await waitFor(() =>
+      expect(screen.queryByText("Existing CSV export failure")).toBeNull()
+    )
     expect(fetchRequests).toHaveBeenLastCalledWith(
       expect.objectContaining({ organizationId: "org-beta" })
     )
 
-    fireEvent.click(betaRequest)
+    fireEvent.click(await screen.findByText("Beta customer request"))
     await screen.findByRole("heading", { name: "Beta customer request" })
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Close request" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Post reply" })).toBeNull()
+    expect(screen.queryByText("Read-only access")).toBeNull()
     expect(
-      screen.queryByRole("combobox", { name: "Assign request" })
-    ).toBeNull()
+      await screen.findByRole("combobox", { name: "Assign request" })
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("combobox", { name: /^Severity:/ }))
+    const low = await screen.findByRole("option", { name: "Low" })
+    fireEvent.pointerDown(low, { button: 0, pointerType: "mouse" })
+    fireEvent.click(low)
+    await waitFor(() => {
+      expect(updateRequestSeverity).toHaveBeenCalledWith("request-beta", 4)
+    })
     expect(
       screen.getByRole("link", { name: "Requests" }).getAttribute("href")
-    ).toBe("/?organizationId=org-beta")
+    ).toBe("/")
   })
 
   it("searches teams, resets pagination, and filters requests across pages", async () => {
@@ -328,7 +354,8 @@ describe("portal route smoke", () => {
     expect(screen.getByText("Team request 1")).toBeTruthy()
   })
 
-  it("shows the real assignment and lets a user reassign and unassign a request", async () => {
+  it("shows the real assignment and lets staff reassign and unassign a request", async () => {
+    signInAsStaff()
     renderPortal("/requests/request-1", context)
     const panel = await screen.findByRole("region", {
       name: "Request assignment",
@@ -360,6 +387,7 @@ describe("portal route smoke", () => {
   })
 
   it("keeps the previous assignee and displays an error when saving fails", async () => {
+    signInAsStaff()
     vi.mocked(context.api.updateRequestAssignee).mockRejectedValue(
       new Error("Network failure")
     )
@@ -550,17 +578,12 @@ describe("portal route smoke", () => {
     })
     expect(screen.getByRole("img", { name: "updated-view.png" })).toBeTruthy()
 
-    const severity = screen.getByRole("combobox", {
-      name: "Severity: High",
-    })
-    fireEvent.click(severity)
-    const low = await screen.findByRole("option", { name: "Low" })
-    fireEvent.pointerDown(low, { button: 0, pointerType: "mouse" })
-    fireEvent.click(low)
-    await waitFor(() => {
-      expect(updateRequestSeverity).toHaveBeenCalledWith("request-2", 4)
-    })
-    expect(screen.getByRole("combobox", { name: "Severity: Low" })).toBeTruthy()
+    // Severity and assignee are staff decisions; customers only see them.
+    expect(screen.queryByRole("combobox", { name: /^Severity:/ })).toBeNull()
+    expect(
+      screen.queryByRole("combobox", { name: "Assign request" })
+    ).toBeNull()
+    expect(updateRequestSeverity).not.toHaveBeenCalled()
     expect(requirePortalAuth).toHaveBeenCalled()
   })
 

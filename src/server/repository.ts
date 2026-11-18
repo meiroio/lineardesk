@@ -82,13 +82,12 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
     return rows[0]?.id ?? null
   }
 
-  async listRequestsForOrganization(
-    organizationId: string,
-    query: RequestListQuery
-  ) {
+  async listRequests(organizationId: string | null, query: RequestListQuery) {
     const terminalStates = ["completed", "canceled", "duplicate"]
     const where = and(
-      eq(helpdeskRequests.organizationId, organizationId),
+      organizationId
+        ? eq(helpdeskRequests.organizationId, organizationId)
+        : isNotNull(helpdeskRequests.organizationId),
       query.teamId
         ? eq(helpdeskRequests.linearTeamId, query.teamId)
         : undefined,
@@ -110,6 +109,7 @@ class DrizzleHelpdeskRepository implements HelpdeskRepository {
           linearStateName: helpdeskRequests.linearStateName,
           linearStateType: helpdeskRequests.linearStateType,
           severity: helpdeskRequests.severity,
+          organizationId: helpdeskRequests.organizationId,
           createdAt: helpdeskRequests.createdAt,
           updatedAt: helpdeskRequests.updatedAt,
         })

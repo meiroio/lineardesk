@@ -85,8 +85,35 @@ export async function requireRequestListScope(
 
   return {
     ok: true,
-    organizationId: requestedOrganizationId ?? authorization.organizationId,
+    // Staff see every organization unless they pick one; customers are always
+    // pinned to their own organization.
+    organizationId: authorization.isStaff
+      ? (requestedOrganizationId ?? null)
+      : authorization.organizationId,
   }
+}
+
+/**
+ * Triage changes (assignee, severity) are reserved for Meiro staff, who may
+ * act on any customer organization's request regardless of membership.
+ */
+export async function requireStaffRequest(
+  deps: ResolvedApiDependencies,
+  headers: Headers,
+  id: string
+): Promise<
+  | { ok: true; record: RequestRecord }
+  | PortalAuthorizationFailure
+  | { ok: false; status: 404; body: { error: string } }
+> {
+  const authorization = await requirePortalReadScope(deps, headers)
+  if (!authorization.ok) return authorization
+  if (!authorization.isStaff) {
+    return { ok: false, status: 403, body: { error: "staff_only" } }
+  }
+  const record = await deps.repo.getOrganizationRequestById(id)
+  if (!record) return { ok: false, status: 404, body: { error: "not_found" } }
+  return { ok: true, record }
 }
 
 function organizationDenial(

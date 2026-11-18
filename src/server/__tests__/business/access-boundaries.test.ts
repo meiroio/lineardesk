@@ -74,7 +74,7 @@ describe("customer request access and boundary flows", () => {
     })
   })
 
-  it("lets staff browse across organizations while keeping writes and customer content scoped", async () => {
+  it("lets staff work across organizations while keeping customer content and replies scoped", async () => {
     const world = makeBusinessWorld()
     addAcme(world)
     world.addOrganization({
@@ -119,11 +119,22 @@ describe("customer request access and boundary flows", () => {
     ])
 
     expect((await world.get("/teams", staff)).status).toBe(200)
-    const unselected = await world.get("/requests", staff)
-    await expect(unselected.json()).resolves.toMatchObject({
-      requests: [],
-      total: 0,
-    })
+    const unfiltered = await world.get("/requests", staff)
+    const unfilteredBody = (await unfiltered.json()) as {
+      requests: { id: string; organizationId: string }[]
+      total: number
+    }
+    expect(unfilteredBody.total).toBe(2)
+    expect(
+      unfilteredBody.requests
+        .map(({ id, organizationId }) => ({ id, organizationId }))
+        .sort((left, right) => left.id.localeCompare(right.id))
+    ).toEqual(
+      [
+        { id: acmeRequest.id, organizationId: "org-acme" },
+        { id: betaRequest.id, organizationId: "org-beta" },
+      ].sort((left, right) => left.id.localeCompare(right.id))
+    )
     const selected = await world.get("/requests?organizationId=org-beta", staff)
     await expect(selected.json()).resolves.toMatchObject({
       requests: [{ id: betaRequest.id }],
@@ -164,7 +175,6 @@ describe("customer request access and boundary flows", () => {
       ).status
     ).toBe(403)
 
-    world.addMembership({ userId: "user-staff", organizationId: "org-acme" })
     expect(
       (
         await world.postJson(
@@ -173,7 +183,40 @@ describe("customer request access and boundary flows", () => {
           staff
         )
       ).status
+    ).toBe(200)
+    expect(
+      (
+        await world.postJson(
+          `/requests/${betaRequest.id}/severity`,
+          { severity: 1 },
+          staff
+        )
+      ).status
+    ).toBe(200)
+    expect(world.requests.get(betaRequest.id)?.severity).toBe(1)
+    expect(
+      (
+        await world.postJson(
+          "/requests/orphan/severity",
+          { severity: 1 },
+          staff
+        )
+      ).status
     ).toBe(404)
+    for (const [path, body] of [
+      ["assignment", { assigneeId: null }],
+      ["severity", { severity: 4 }],
+    ] as const) {
+      const response = await world.postJson(
+        `/requests/${acmeRequest.id}/${path}`,
+        body,
+        acme
+      )
+      expect(response.status).toBe(403)
+      await expect(response.json()).resolves.toEqual({ error: "staff_only" })
+    }
+
+    world.addMembership({ userId: "user-staff", organizationId: "org-acme" })
     expect(
       (
         await world.postJson(
@@ -184,7 +227,9 @@ describe("customer request access and boundary flows", () => {
       ).status
     ).toBe(201)
     const defaultScope = await world.get("/requests", staff)
-    await expect(defaultScope.json()).resolves.toMatchObject({
+    await expect(defaultScope.json()).resolves.toMatchObject({ total: 2 })
+    const ownScope = await world.get("/requests?organizationId=org-acme", staff)
+    await expect(ownScope.json()).resolves.toMatchObject({
       requests: [{ id: acmeRequest.id }],
       total: 1,
     })

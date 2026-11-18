@@ -97,10 +97,16 @@ and inviter. Then verify the email and accept the invitation.
 
 ### Meiro staff access
 
-Staff can sign in with a verified `meiro.io` address and choose any organization
-from the request dashboard. They can read the organization's requests, shared
-activity, and attachments. Staff can change tickets in their active organization
-or, if they only belong to one organization, in that organization.
+Staff can sign in with a verified `meiro.io` address. Their request dashboard
+shows tickets from every organization by default; the **Organization** filter
+beside **Teams** narrows it to one. Staff can read any organization's requests,
+shared activity, and attachments, and they can change the assignee and severity
+of any request.
+
+Only staff can change the assignee or severity. Customers see both values, and
+editing a request's title or description keeps its severity. Replies, edits,
+closing a request, and new requests still require membership in the request's
+organization.
 
 ### Sharing updates with clients
 

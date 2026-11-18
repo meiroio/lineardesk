@@ -171,9 +171,13 @@ export function makeBusinessWorld() {
     },
     getUserIdByEmail: async (email: string) =>
       userIdsByEmail.get(email) ?? null,
-    listRequestsForOrganization: async (organizationId, query) => {
+    listRequests: async (organizationId, query) => {
       const matching = Array.from(requests.values())
-        .filter((request) => request.organizationId === organizationId)
+        .filter((request) =>
+          organizationId
+            ? request.organizationId === organizationId
+            : request.organizationId !== null
+        )
         .filter(
           (request) => !query.teamId || request.linearTeamId === query.teamId
         )

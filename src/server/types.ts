@@ -295,6 +295,7 @@ export type RequestSummary = Pick<
   | "linearStateName"
   | "linearStateType"
   | "severity"
+  | "organizationId"
   | "createdAt"
   | "updatedAt"
 >
@@ -309,8 +310,9 @@ export type ApplyWebhookEventInput = {
 export type HelpdeskRepository = {
   createRequest: (input: CreateRequestRecordInput) => Promise<RequestRecord>
   getUserIdByEmail: (email: string) => Promise<string | null>
-  listRequestsForOrganization: (
-    organizationId: string,
+  /** `null` lists requests across every customer organization (staff view). */
+  listRequests: (
+    organizationId: string | null,
     query: RequestListQuery
   ) => Promise<{ requests: RequestSummary[]; total: number }>
   getRequestForOrganization: (

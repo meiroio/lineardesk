@@ -12,6 +12,7 @@ import {
   parseUpdateSeverityInput,
   RequestValidationError,
 } from "../request-validation"
+import { isStaffEmail } from "../org-access"
 import type { CloseIssueResolution } from "../types"
 import {
   CloseRequestBodyModel,
@@ -34,6 +35,7 @@ import {
   requireAuthorizedSession,
   requirePortalReadScope,
   requireRequestListScope,
+  requireStaffRequest,
   serializeLinearComment,
   serializeRequest,
 } from "./http"
@@ -94,9 +96,10 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           severity: query.severity?.split(",").map(Number) ?? [],
           ...(query.teamId ? { teamId: query.teamId } : {}),
         }
-        const { requests, total } = organizationId
-          ? await deps.repo.listRequestsForOrganization(organizationId, filters)
-          : { requests: [], total: 0 }
+        const { requests, total } = await deps.repo.listRequests(
+          organizationId,
+          filters
+        )
         return {
           requests: requests.map((record) => ({
             ...record,
@@ -406,14 +409,15 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
       "/requests/:id/severity",
       async ({ params, body, request, resolveApiDependencies, status }) => {
         const deps = resolveApiDependencies()
-        const authorization = await requireAuthorizedSession(
+        const authorization = await requireStaffRequest(
           deps,
-          request.headers
+          request.headers,
+          params.id
         )
         if (!authorization.ok) {
           return status(authorization.status, authorization.body)
         }
-        const { session } = authorization
+        const { record } = authorization
 
         let input: ReturnType<typeof parseUpdateSeverityInput>
         try {
@@ -428,12 +432,6 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           }
           throw error
         }
-
-        const record = await deps.repo.getRequestForOrganization(
-          params.id,
-          session.organizationId
-        )
-        if (!record) return status(404, { error: "not_found" })
 
         await deps.linear.updateIssuePriority({
           issueId: record.linearIssueId,
@@ -498,17 +496,21 @@ export function createRequestsApi(apiDependencies: ApiDependenciesPlugin) {
           return status(409, { error: "ticket_closed" })
         }
 
+        // Customers may edit the wording, but severity is a staff decision.
+        const severity = isStaffEmail(session.user.email)
+          ? input.severity
+          : (record.severity ?? input.severity)
         await deps.linear.updateIssueFields({
           issueId: record.linearIssueId,
           title: input.title,
           description: input.description,
-          priority: input.severity,
+          priority: severity,
         })
         const updated = await deps.repo.updateRequestFields({
           id: record.id,
           title: input.title,
           description: input.description,
-          severity: input.severity,
+          severity,
         })
         return { request: serializeRequest(updated ?? record) }
       },

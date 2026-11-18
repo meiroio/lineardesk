@@ -215,13 +215,14 @@ describe("customer request business flows", () => {
         id: created.request.id,
         title: "Large CSV exports time out",
         description,
-        severity: 1,
+        // Customers cannot escalate severity; it stays at the submitted level.
+        severity: 3,
       },
     })
     expect(world.getLinearIssue(created.request.linearIssueId)).toMatchObject({
       title: "Large CSV exports time out",
       description,
-      priority: 1,
+      priority: 3,
     })
 
     const closeResponse = await world.postJson(

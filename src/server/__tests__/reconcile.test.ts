@@ -40,7 +40,7 @@ function makeRepo(open: RequestRecord[]): HelpdeskRepository {
   return {
     createRequest: vi.fn(async () => makeRecord()),
     getUserIdByEmail: vi.fn(async () => "u1"),
-    listRequestsForOrganization: vi.fn(async () => ({
+    listRequests: vi.fn(async () => ({
       requests: [],
       total: 0,
     })),

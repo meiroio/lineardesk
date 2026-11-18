@@ -12,10 +12,17 @@ import type { PortalRequestSummary } from "@/lib/helpdesk-api"
 export function RequestList({
   requests,
   onPrefetch,
+  organizationNames,
 }: {
   requests: PortalRequestSummary[]
   onPrefetch: (id: string) => void
+  /** When set, each row is labelled with its organization (staff view). */
+  organizationNames?: ReadonlyMap<string, string>
 }) {
+  const organizationOf = (request: PortalRequestSummary) =>
+    organizationNames && request.organizationId
+      ? organizationNames.get(request.organizationId)
+      : undefined
   return (
     <>
       {[
@@ -77,7 +84,12 @@ export function RequestList({
                       {request.linearIdentifier}
                     </span>
                     <span className="min-w-0 text-[13px] font-medium wrap-anywhere sm:truncate">
-                      {request.title}
+                      <span>{request.title}</span>
+                      {organizationOf(request) ? (
+                        <span className="ml-2 hidden text-[11px] font-normal text-muted-foreground sm:inline">
+                          {organizationOf(request)}
+                        </span>
+                      ) : null}
                     </span>
                     <time
                       dateTime={request.updatedAt}
@@ -98,7 +110,13 @@ export function RequestList({
                       aria-hidden
                     />
                     <span className="col-span-2 text-[11px] text-muted-foreground sm:hidden">
-                      {request.linearIdentifier} · {request.linearStateName}
+                      {[
+                        request.linearIdentifier,
+                        request.linearStateName,
+                        organizationOf(request),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </Link>
                 </li>

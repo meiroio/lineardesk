@@ -281,6 +281,8 @@ function RequestDetail() {
   const canWrite =
     portalAccess.organizationId !== null &&
     portalAccess.organizationId === request.organizationId
+  // Assignee and severity are triage decisions reserved for Meiro staff.
+  const canTriage = portalAccess.isStaff
   const organization = portalAccess.organizations?.find(
     (entry) => entry.id === request.organizationId
   )
@@ -288,7 +290,6 @@ function RequestDetail() {
   return (
     <PageShell
       backLabel="Requests"
-      backOrganizationId={organization?.id}
       title={request.title}
       description={`Reported ${formatDateTime(request.createdAt)}`}
       backActions={
@@ -311,7 +312,7 @@ function RequestDetail() {
           {organization ? (
             <span className="text-muted-foreground">{organization.name}</span>
           ) : null}
-          {!canWrite ? (
+          {!canWrite && !canTriage ? (
             <span className="text-muted-foreground">Read-only access</span>
           ) : null}
         </>
@@ -325,7 +326,7 @@ function RequestDetail() {
             key={request.id}
             request={request}
             api={api}
-            canWrite={canWrite}
+            canWrite={canTriage}
           />
         }
       />
@@ -570,7 +571,7 @@ function RequestDetail() {
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted-foreground">Severity</dt>
                 <dd>
-                  {canWrite ? (
+                  {canTriage ? (
                     <div className="flex flex-col items-end gap-1">
                       <SeveritySelect
                         priority={request.severity}

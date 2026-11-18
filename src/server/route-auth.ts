@@ -33,6 +33,7 @@ export const getPortalAuthState = createServerFn({ method: "GET" }).handler(
     if (isStaffEmail(session.user.email)) {
       return {
         authenticated: true,
+        isStaff: true,
         organizationId:
           resolution.status === "ok" ? resolution.organizationId : null,
         organizations: await listPortalOrganizations(),
@@ -45,6 +46,7 @@ export const getPortalAuthState = createServerFn({ method: "GET" }).handler(
 
     return {
       authenticated: true,
+      isStaff: false,
       organizationId: resolution.organizationId,
     }
   }
