@@ -96,6 +96,11 @@ describe("login route UI", () => {
     renderLoginRoute()
 
     expect(screen.queryByRole("link", { name: /back to requests/i })).toBeNull()
+    expect(
+      screen
+        .getByRole("link", { name: "About LinearDesk" })
+        .getAttribute("href")
+    ).toBe("/about")
   })
 
   it("tells users they can close the tab after requesting a magic link", async () => {

@@ -343,16 +343,21 @@ function Dashboard() {
                 ? ` · ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                 : ""}
             </span>
-            {statusScope === "active" ? (
-              <Button
-                data-variant="link"
-                className="gap-1 text-xs"
-                onClick={() => changeStatusScope("done")}
-              >
-                Show closed requests
-                <RiArrowRightSLine className="size-3.5" aria-hidden />
-              </Button>
-            ) : null}
+            <span className="flex items-center gap-4">
+              {statusScope === "active" ? (
+                <Button
+                  data-variant="link"
+                  className="gap-1 text-xs"
+                  onClick={() => changeStatusScope("done")}
+                >
+                  Show closed requests
+                  <RiArrowRightSLine className="size-3.5" aria-hidden />
+                </Button>
+              ) : null}
+              <Link to="/about" className="hover:text-foreground">
+                About
+              </Link>
+            </span>
           </footer>
         </div>
       )}

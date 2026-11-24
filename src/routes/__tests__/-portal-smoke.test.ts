@@ -335,6 +335,21 @@ describe("portal route smoke", () => {
     ).toBe("/")
   })
 
+  it("shows the about page without signing in and links to the repository", async () => {
+    renderPortal("/about", context)
+
+    await screen.findByRole("heading", { name: "About LinearDesk" })
+    expect(requirePortalAuth).not.toHaveBeenCalled()
+    expect(
+      screen
+        .getByRole("link", { name: /meiroio\/lineardesk on GitHub/ })
+        .getAttribute("href")
+    ).toBe("https://github.com/meiroio/lineardesk")
+    expect(
+      screen.getByRole("link", { name: "Requests" }).getAttribute("href")
+    ).toBe("/")
+  })
+
   it("lets an agent find and change every dashboard filter", async () => {
     renderPortal("/", context)
     await screen.findByText("Existing CSV export failure")

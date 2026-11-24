@@ -382,6 +382,12 @@ function LoginCard({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">{children}</CardContent>
       </Card>
+      <a
+        href="/about"
+        className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        About LinearDesk
+      </a>
     </main>
   )
 }
