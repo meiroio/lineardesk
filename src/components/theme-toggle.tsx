@@ -1,13 +1,12 @@
 import { RiMoonLine, RiSunLine } from "@remixicon/react"
+import { Button } from "@ui-sdk/react/button"
 
-import { Button } from "@/components/ui/button"
 import { toggleTheme } from "@/lib/theme"
 
 export function ThemeToggle({ className }: { className?: string }) {
   return (
     <Button
-      variant="ghost"
-      size="icon"
+      data-variant="ghost"
       aria-label="Toggle theme"
       className={className}
       onClick={toggleTheme}

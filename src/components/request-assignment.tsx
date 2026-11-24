@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { RiUserLine, RiTeamLine, RiFolderLine } from "@remixicon/react"
-
-import { Button } from "@/components/ui/button"
+import { Button } from "@ui-sdk/react/button"
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectItemIndicator,
   SelectTrigger,
-} from "@/components/ui/select"
+} from "@ui-sdk/react/select"
+
 import { assignmentKeys } from "@/lib/helpdesk-api"
 import type { PortalRequest } from "@/lib/helpdesk-api"
 import type { HelpdeskApiClient } from "@/lib/app-context"
@@ -54,11 +55,7 @@ export function RequestAssignment({
           <p role="alert" className="text-xs text-muted-foreground">
             Could not load assignment.
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void assignment.refetch()}
-          >
+          <Button data-size="sm" onClick={() => assignment.refetch()}>
             Retry assignment
           </Button>
         </div>
@@ -125,28 +122,29 @@ export function RequestAssignment({
           >
             <SelectTrigger
               aria-label="Assign request"
-              className="h-9 w-full rounded-lg text-xs"
+              className="h-9 w-full justify-between rounded-lg text-xs"
               aria-describedby={
                 mutation.isError ? "assignment-error" : undefined
               }
             >
               {mutation.isPending ? "Saving assignment…" : "Change assignee"}
             </SelectTrigger>
-            <SelectContent
-              align="end"
-              alignItemWithTrigger={false}
-              className="min-w-56"
-            >
-              <SelectItem value="unassigned">Unassigned</SelectItem>
+            <SelectContent align="end" className="min-w-56">
+              <SelectItem value="unassigned">
+                Unassigned
+                <SelectItemIndicator />
+              </SelectItem>
               {data.assignee &&
               !data.assignees.some((user) => user.id === data.assignee?.id) ? (
                 <SelectItem value={data.assignee.id} disabled>
                   {data.assignee.name}
+                  <SelectItemIndicator />
                 </SelectItem>
               ) : null}
               {data.assignees.map((user) => (
                 <SelectItem key={user.id} value={user.id}>
                   {user.name}
+                  <SelectItemIndicator />
                 </SelectItem>
               ))}
             </SelectContent>
@@ -165,13 +163,9 @@ export function RequestAssignment({
       {data && assignment.isError ? (
         <p role="status" className="text-xs text-muted-foreground">
           Assignment may be out of date.{" "}
-          <button
-            type="button"
-            className="underline"
-            onClick={() => void assignment.refetch()}
-          >
-            Refresh
-          </button>
+          <Button data-variant="link" onClick={() => assignment.refetch()}>
+            Refresh assignment
+          </Button>
         </p>
       ) : null}
     </section>

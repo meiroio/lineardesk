@@ -1,6 +1,20 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RiAddLine, RiExternalLinkLine } from "@remixicon/react"
+import {
+  AlertDialog,
+  AlertDialogBackdrop,
+  AlertDialogClose,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@ui-sdk/react/alert-dialog"
+import { Avatar, AvatarFallback } from "@ui-sdk/react/avatar"
+import { Button } from "@ui-sdk/react/button"
+import { Field, FieldError, FieldLabel } from "@ui-sdk/react/field"
+import { Input } from "@ui-sdk/react/input"
+import { Textarea } from "@ui-sdk/react/textarea"
 import type { FormEvent } from "react"
 import { useEffect, useState } from "react"
 
@@ -11,8 +25,6 @@ import { RequestAssignment } from "@/components/request-assignment"
 import { RequestProgress } from "@/components/request-progress"
 import { SeverityBadge } from "@/components/severity-badge"
 import { SeveritySelect } from "@/components/severity-select"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -21,10 +33,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Textarea } from "@/components/ui/textarea"
 import type { PortalRequest, RequestResolution } from "@/lib/helpdesk-api"
 import {
   ApiError,
@@ -50,8 +59,6 @@ function RequestDetail() {
   const [replyError, setReplyError] = useState<string | null>(null)
   const [replyUploadError, setReplyUploadError] = useState<string | null>(null)
   const [replying, setReplying] = useState(false)
-  const [closing, setClosing] = useState(false)
-  const [closeBusy, setCloseBusy] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [editBusy, setEditBusy] = useState(false)
@@ -132,7 +139,6 @@ function RequestDetail() {
   }
 
   async function handleClose(resolution: RequestResolution) {
-    setCloseBusy(true)
     setCloseError(null)
 
     try {
@@ -145,7 +151,6 @@ function RequestDetail() {
             : data.request
       )
       void queryClient.invalidateQueries({ queryKey: requestKeys.list })
-      setClosing(false)
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         void navigate({ to: "/login" })
@@ -153,8 +158,7 @@ function RequestDetail() {
       }
 
       setCloseError("Could not close the request. Try again after a moment.")
-    } finally {
-      setCloseBusy(false)
+      throw err
     }
   }
 
@@ -294,13 +298,10 @@ function RequestDetail() {
       description={`Reported ${formatDateTime(request.createdAt)}`}
       backActions={
         canWrite ? (
-          <Link
-            to="/requests/new"
-            className={buttonVariants({ variant: "outline" })}
-          >
+          <Button render={<Link to="/requests/new" />}>
             <RiAddLine aria-hidden />
             New request
-          </Link>
+          </Button>
         ) : null
       }
       eyebrow={
@@ -337,8 +338,8 @@ function RequestDetail() {
               <CardTitle>Description</CardTitle>
               {canWrite && isOpen && !editing ? (
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  data-variant="ghost"
+                  data-size="sm"
                   onClick={() => startEditing()}
                 >
                   Edit
@@ -351,50 +352,49 @@ function RequestDetail() {
                   className="flex flex-col gap-5"
                   onSubmit={handleEditSubmit}
                 >
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-title">Title</Label>
+                  <Field name="title">
+                    <FieldLabel>Title</FieldLabel>
                     <Input
-                      id="edit-title"
                       required
-                      minLength={3}
+                      pattern=".{3,}"
                       maxLength={160}
                       value={editTitle}
-                      onChange={(event) => setEditTitle(event.target.value)}
+                      onValueChange={setEditTitle}
                     />
-                  </div>
+                    <FieldError match="valueMissing">Enter a title.</FieldError>
+                    <FieldError match="patternMismatch">
+                      Use at least 3 characters.
+                    </FieldError>
+                  </Field>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-description">Description</Label>
+                  <Field name="description">
+                    <FieldLabel>Description</FieldLabel>
                     <Textarea
-                      id="edit-description"
                       required
-                      minLength={1}
                       maxLength={8000}
                       rows={6}
                       value={editDescription}
-                      onChange={(event) =>
-                        setEditDescription(event.target.value)
-                      }
+                      onValueChange={setEditDescription}
                     />
-                  </div>
+                    <FieldError match="valueMissing">
+                      Enter a description.
+                    </FieldError>
+                  </Field>
 
                   <ImageDropzone
-                    id="edit-attachments"
                     imageUpload={editAttachmentUpload}
                     previewText={editAttachments}
                     onClear={() => setEditAttachments("")}
                   />
 
                   {editUploadError || editError ? (
-                    <p className="text-sm text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {editUploadError ?? editError}
                     </p>
                   ) : null}
 
                   <div className="flex items-center justify-end gap-2">
                     <Button
-                      type="button"
-                      variant="outline"
                       onClick={() => {
                         setEditAttachments("")
                         setEditing(false)
@@ -404,7 +404,9 @@ function RequestDetail() {
                     </Button>
                     <Button
                       type="submit"
+                      data-variant="solid"
                       disabled={editBusy || editAttachmentUpload.pending > 0}
+                      focusableWhenDisabled
                     >
                       {editBusy
                         ? "Saving..."
@@ -449,7 +451,10 @@ function RequestDetail() {
                 <ol className="flex flex-col gap-5">
                   {comments.map((comment) => (
                     <li key={comment.id} className="flex gap-3">
-                      <Avatar>
+                      <Avatar
+                        aria-hidden
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                      >
                         <AvatarFallback>
                           {initialsOf(comment.authorName)}
                         </AvatarFallback>
@@ -487,47 +492,41 @@ function RequestDetail() {
                   className="flex flex-col gap-3"
                   onSubmit={handleReplySubmit}
                 >
-                  <Label htmlFor="request-reply" className="sr-only">
-                    Reply
-                  </Label>
-                  <Textarea
-                    id="request-reply"
+                  <Field
                     name="body"
-                    value={replyBody}
-                    onChange={(event) => setReplyBody(event.target.value)}
-                    onPaste={replyUpload.onPaste}
-                    minLength={1}
-                    maxLength={5000}
-                    required
-                    rows={4}
-                    aria-invalid={
-                      replyError || replyUploadError ? true : undefined
-                    }
-                    aria-describedby={
-                      replyError || replyUploadError
-                        ? "request-reply-error"
-                        : undefined
-                    }
-                    placeholder="Add a reply..."
-                  />
+                    invalid={replyError || replyUploadError ? true : undefined}
+                  >
+                    <FieldLabel className="sr-only">Reply</FieldLabel>
+                    <Textarea
+                      value={replyBody}
+                      onValueChange={setReplyBody}
+                      onPaste={replyUpload.onPaste}
+                      maxLength={5000}
+                      required
+                      rows={4}
+                      placeholder="Add a reply..."
+                    />
+                    {replyUploadError || replyError ? (
+                      <FieldError match>
+                        {replyUploadError ?? replyError}
+                      </FieldError>
+                    ) : (
+                      <FieldError match="valueMissing">
+                        Reply must not be empty.
+                      </FieldError>
+                    )}
+                  </Field>
                   <ImageDropzone
-                    id="reply-attachments"
                     imageUpload={replyUpload}
                     label="Reply attachments"
                     uploadLabel="Upload reply images"
                   />
-                  {replyUploadError || replyError ? (
-                    <p
-                      id="request-reply-error"
-                      className="text-sm text-destructive"
-                    >
-                      {replyUploadError ?? replyError}
-                    </p>
-                  ) : null}
                   <div className="flex justify-end">
                     <Button
                       type="submit"
+                      data-variant="solid"
                       disabled={replying || replyUpload.pending > 0}
+                      focusableWhenDisabled
                     >
                       {replying
                         ? "Posting..."
@@ -631,47 +630,51 @@ function RequestDetail() {
           ) : null}
           {canWrite && isOpen ? (
             <CardFooter className="flex-col items-stretch gap-3 border-t px-0">
-              {closing ? (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Close this request as:
-                  </p>
-                  <Button
-                    variant="outline"
-                    disabled={closeBusy}
-                    onClick={() => void handleClose("resolved")}
-                  >
-                    Resolved
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={closeBusy}
-                    onClick={() => void handleClose("canceled")}
-                  >
-                    Cancelled
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    disabled={closeBusy}
-                    onClick={() => {
-                      setClosing(false)
-                      setCloseError(null)
-                    }}
-                  >
-                    Keep open
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" onClick={() => setClosing(true)}>
-                  Close request
-                </Button>
-              )}
+              <AlertDialog
+                pendingAnnouncement="Closing request"
+                onOpenChange={(open) => {
+                  if (open) setCloseError(null)
+                }}
+              >
+                <AlertDialogTrigger>Close request</AlertDialogTrigger>
+                <AlertDialogBackdrop />
+                <AlertDialogContent className="flex max-w-sm flex-col gap-4">
+                  <div className="flex flex-col gap-2">
+                    <AlertDialogTitle className="font-heading text-base font-semibold">
+                      Close {request.linearIdentifier}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-sm text-muted-foreground">
+                      The team stops working on it. Choose how it ended.
+                    </AlertDialogDescription>
+                  </div>
+                  {closeError ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      {closeError}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <AlertDialogClose>Keep open</AlertDialogClose>
+                    <AlertDialogClose
+                      value="canceled"
+                      action={() => handleClose("canceled")}
+                      data-agent-confirm={`Closes ${request.linearIdentifier} as cancelled`}
+                    >
+                      Mark cancelled
+                    </AlertDialogClose>
+                    <AlertDialogClose
+                      value="resolved"
+                      data-variant="solid"
+                      action={() => handleClose("resolved")}
+                      data-agent-confirm={`Closes ${request.linearIdentifier} as resolved`}
+                    >
+                      Mark resolved
+                    </AlertDialogClose>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 Closing tells the team the issue no longer needs attention.
               </p>
-              {closeError ? (
-                <p className="text-sm text-destructive">{closeError}</p>
-              ) : null}
             </CardFooter>
           ) : null}
         </Card>

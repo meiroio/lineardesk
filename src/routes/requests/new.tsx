@@ -5,26 +5,31 @@ import {
   useNavigate,
 } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
-
-import { ImageDropzone } from "@/components/image-dropzone"
-import { PageShell } from "@/components/page-shell"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Button } from "@ui-sdk/react/button"
+import { Field, FieldError, FieldLabel } from "@ui-sdk/react/field"
+import { Input } from "@ui-sdk/react/input"
+import {
+  SegmentedControl,
+  SegmentedControlIndicator,
+  SegmentedControlItem,
+} from "@ui-sdk/react/segmented-control"
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectItemIndicator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+} from "@ui-sdk/react/select"
+import { Textarea } from "@ui-sdk/react/textarea"
+import { useState } from "react"
+
+import { ImageDropzone } from "@/components/image-dropzone"
+import { PageShell } from "@/components/page-shell"
+import { Card, CardContent } from "@/components/ui/card"
 import type { PortalRequest } from "@/lib/helpdesk-api"
 import { ApiError, requestKeys, teamKeys } from "@/lib/helpdesk-api"
 import { usePasteImageUpload } from "@/lib/use-paste-image-upload"
-import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/requests/new")({
   beforeLoad: async ({ context }) => {
@@ -74,7 +79,6 @@ function NewRequest() {
     : teams.some((team) => team.id === defaultTeamId)
       ? defaultTeamId
       : (teams[0]?.id ?? "")
-  const selectedTeam = teams.find((team) => team.id === selectedTeamId)
 
   const expectedPaste = usePasteImageUpload(
     api.uploadImage,
@@ -156,86 +160,79 @@ function NewRequest() {
                 .finally(() => setSubmitting(false))
             }}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="request-title">Title</Label>
+            <Field name="title">
+              <FieldLabel>Title</FieldLabel>
               <Input
-                id="request-title"
                 required
-                minLength={3}
+                pattern=".{3,}"
                 maxLength={160}
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
+                onValueChange={setTitle}
               />
-            </div>
+              <FieldError match="valueMissing">Enter a title.</FieldError>
+              <FieldError match="patternMismatch">
+                Use at least 3 characters.
+              </FieldError>
+            </Field>
 
-            <div className="grid gap-2">
-              <Label htmlFor="request-team">Team</Label>
+            <Field name="teamId" invalid={teamError ? true : undefined}>
+              <FieldLabel>Team</FieldLabel>
               <Select
-                name="teamId"
                 required
+                placeholder={
+                  teamStatus === "pending"
+                    ? "Loading teams…"
+                    : "No teams available"
+                }
                 disabled={teamStatus !== "success" || teams.length === 0}
+                items={teams.map((team) => ({
+                  value: team.id,
+                  label: `${team.name} (${team.key})`,
+                }))}
                 value={selectedTeamId || null}
                 onValueChange={(value) => setTeamId(value ?? "")}
               >
-                <SelectTrigger
-                  id="request-team"
-                  aria-invalid={teamError ? true : undefined}
-                  aria-describedby={
-                    teamError ? "request-team-error" : undefined
-                  }
-                  className="w-full"
-                >
-                  <SelectValue>
-                    {selectedTeam
-                      ? `${selectedTeam.name} (${selectedTeam.key})`
-                      : teamStatus === "pending"
-                        ? "Loading teams…"
-                        : "No teams available"}
-                  </SelectValue>
+                <SelectTrigger className="w-full justify-between">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="start">
                   {teams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
+                    <SelectItem
+                      key={team.id}
+                      value={team.id}
+                      label={`${team.name} (${team.key})`}
+                    >
                       {team.name} ({team.key})
+                      <SelectItemIndicator />
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {teamError ? (
-                <p id="request-team-error" className="text-sm text-destructive">
-                  Teams could not be loaded.
-                </p>
+                <FieldError match>Teams could not be loaded.</FieldError>
               ) : null}
-            </div>
+            </Field>
 
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-medium">Severity</legend>
-              <div className="flex flex-wrap gap-2">
+            <Field>
+              <FieldLabel>Severity</FieldLabel>
+              <SegmentedControl
+                name="severity"
+                value={severity}
+                onValueChange={(value) => {
+                  if (value) setSeverity(value)
+                }}
+                className="self-start"
+              >
+                <SegmentedControlIndicator />
                 {SEVERITY_OPTIONS.map((option) => (
-                  <label
-                    key={option.value}
-                    className={cn(
-                      "cursor-pointer rounded-4xl border border-border px-3 py-1 text-sm font-medium transition-colors",
-                      "has-[:checked]:border-transparent has-[:checked]:bg-primary has-[:checked]:text-primary-foreground",
-                      "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background"
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="severity"
-                      value={option.value}
-                      checked={severity === option.value}
-                      onChange={(event) => setSeverity(event.target.value)}
-                      className="sr-only"
-                    />
+                  <SegmentedControlItem key={option.value} value={option.value}>
                     {option.label}
-                  </label>
+                  </SegmentedControlItem>
                 ))}
-              </div>
-            </fieldset>
+              </SegmentedControl>
+            </Field>
 
             <BugField
-              id="request-expected"
               label="Expected behaviour"
               placeholder="What should happen?"
               value={expectedBehaviour}
@@ -243,7 +240,6 @@ function NewRequest() {
               onPaste={expectedPaste.onPaste}
             />
             <BugField
-              id="request-current"
               label="Current behaviour"
               placeholder="What actually happens?"
               value={currentBehaviour}
@@ -251,7 +247,6 @@ function NewRequest() {
               onPaste={currentPaste.onPaste}
             />
             <BugField
-              id="request-repro"
               label="Steps to reproduce"
               placeholder="1. … 2. … 3. …"
               value={stepsToReproduce}
@@ -260,7 +255,6 @@ function NewRequest() {
             />
 
             <ImageDropzone
-              id="request-attachments"
               imageUpload={attachmentUpload}
               previewText={attachments}
               onClear={() => setAttachments("")}
@@ -271,9 +265,15 @@ function NewRequest() {
             </p>
 
             {uploadError ? (
-              <p className="text-sm text-destructive">{uploadError}</p>
+              <p role="alert" className="text-sm text-destructive">
+                {uploadError}
+              </p>
             ) : null}
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
 
             <div className="flex items-center justify-end gap-2">
               {uploadsPending > 0 ? (
@@ -281,12 +281,12 @@ function NewRequest() {
                   Uploading image…
                 </span>
               ) : null}
-              <Link to="/" className={buttonVariants({ variant: "outline" })}>
-                Cancel
-              </Link>
+              <Button render={<Link to="/" />}>Cancel</Button>
               <Button
                 type="submit"
+                data-variant="solid"
                 disabled={submitting || uploadsPending > 0 || !selectedTeamId}
+                focusableWhenDisabled
               >
                 {submitting ? "Submitting..." : "Submit request"}
               </Button>
@@ -299,14 +299,12 @@ function NewRequest() {
 }
 
 function BugField({
-  id,
   label,
   placeholder,
   value,
   onChange,
   onPaste,
 }: {
-  id: string
   label: string
   placeholder: string
   value: string
@@ -314,19 +312,20 @@ function BugField({
   onPaste: React.ClipboardEventHandler<HTMLTextAreaElement>
 }) {
   return (
-    <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
       <Textarea
-        id={id}
         required
-        minLength={1}
         maxLength={5000}
         rows={4}
         value={value}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={onChange}
         onPaste={onPaste}
       />
-    </div>
+      <FieldError match="valueMissing">
+        Describe the {label.toLowerCase()}.
+      </FieldError>
+    </Field>
   )
 }

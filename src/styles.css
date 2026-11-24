@@ -1,5 +1,7 @@
 /* Hallmark · macrostructure: Workbench · tone: modern-minimal · anchor hue: lime · source: user Pen */
+@layer ui-sdk;
 @import "tailwindcss";
+@import "@ui-sdk/core/web.css" layer(components);
 @import "../tokens.css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
@@ -43,6 +45,17 @@
   --status-completed: oklch(0.532 0.157 131.589);
   --status-started: oklch(0.546 0.245 262.881);
   --status-triage: oklch(0.555 0.163 48.998);
+  --ui-background: var(--background);
+  --ui-foreground: var(--foreground);
+  --ui-muted: var(--muted);
+  --ui-muted-foreground: var(--muted-foreground);
+  --ui-border: var(--border);
+  --ui-primary: var(--primary);
+  --ui-primary-foreground: var(--primary-foreground);
+  --ui-destructive: var(--destructive);
+  --ui-radius: var(--radius);
+  --ui-font-sans: var(--font-body);
+  --ui-font-size: 0.8125rem;
 }
 
 .dark {
@@ -170,6 +183,59 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Unnested rules in this layer beat web.css (components.ui-sdk) and lose to utilities. */
+@layer components {
+  a:not([data-slot]) {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  a[data-slot="button"] {
+    text-decoration: none;
+  }
+
+  :is([data-slot="button"], [data-slot="file-input-trigger"]) {
+    &[data-variant="secondary"] {
+      border-color: transparent;
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+
+      &:hover:not([data-disabled]) {
+        background: color-mix(in oklab, var(--secondary), var(--foreground) 6%);
+      }
+    }
+
+    &[data-variant="ghost"] {
+      border-color: transparent;
+      background: transparent;
+
+      &:hover:not([data-disabled]) {
+        background: var(--ui-muted);
+      }
+    }
+
+    &[data-variant="link"] {
+      height: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-decoration: underline;
+      text-decoration-color: var(--ui-muted-foreground);
+      text-underline-offset: 0.1875rem;
+
+      &:hover:not([data-disabled]) {
+        background: transparent;
+        text-decoration-color: currentColor;
+      }
+    }
+
+    &[data-size="sm"] {
+      height: calc(var(--ui-spacing) * 7);
+      padding-inline: calc(var(--ui-spacing) * 2.5);
     }
   }
 }

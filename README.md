@@ -6,7 +6,7 @@ External helpdesk portal for Linear. Invited users sign in with Google or an ema
 
 ## Stack
 
-- TanStack Start with the requested shadcn starter preset.
+- TanStack Start. Interactive UI is built from [ui-sdk](https://ui-sdk.dev) components, styled by `@ui-sdk/core/web.css` themed with the shadcn preset's color tokens.
 - Elysia mounted under `src/routes/api.$.ts` at `/api`.
 - Better Auth with Google OAuth and Postgres-backed sessions.
 - Drizzle ORM with Postgres migrations.

@@ -1,10 +1,15 @@
-import { SEVERITY_LEVELS, severityLevelOf } from "@/components/severity-badge"
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectItemIcon,
+  SelectItemIndicator,
   SelectTrigger,
-} from "@/components/ui/select"
+  SelectValue,
+  SelectValueIcon,
+} from "@ui-sdk/react/select"
+
+import { SEVERITY_LEVELS, severityLevelOf } from "@/components/severity-badge"
 import { cn } from "@/lib/utils"
 
 export function SeveritySelect({
@@ -20,34 +25,36 @@ export function SeveritySelect({
   invalid?: boolean
   describedBy?: string
 }) {
-  const meta = severityLevelOf(priority)
-
   return (
     <Select
-      value={meta.priority}
+      value={String(severityLevelOf(priority).priority)}
       onValueChange={(value) => {
-        if (value != null) onValueChange(value)
+        if (value != null) onValueChange(Number(value))
       }}
       disabled={disabled}
     >
       <SelectTrigger
-        aria-label={`Severity: ${meta.label}`}
+        aria-label="Severity"
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
         aria-busy={disabled || undefined}
-        className="h-5! gap-1 border-border px-2 py-0.5 text-xs font-medium shadow-none"
+        className="h-6 gap-1.5 rounded-full px-2 text-xs"
       >
-        <span className={cn("size-1.5 rounded-full", meta.dot)} aria-hidden />
-        {meta.label}
+        <SelectValueIcon />
+        <SelectValue />
       </SelectTrigger>
-      <SelectContent align="end" alignItemWithTrigger={false}>
+      <SelectContent align="end" className="min-w-36">
         {SEVERITY_LEVELS.map((level) => (
-          <SelectItem key={level.priority} value={level.priority}>
-            <span
-              className={cn("size-1.5 rounded-full", level.dot)}
-              aria-hidden
-            />
+          <SelectItem
+            key={level.priority}
+            value={String(level.priority)}
+            label={level.label}
+          >
+            <SelectItemIcon>
+              <span className={cn("size-1.5 rounded-full", level.dot)} />
+            </SelectItemIcon>
             {level.label}
+            <SelectItemIndicator />
           </SelectItem>
         ))}
       </SelectContent>

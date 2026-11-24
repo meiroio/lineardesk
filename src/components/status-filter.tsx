@@ -1,4 +1,8 @@
-import { cn } from "@/lib/utils"
+import {
+  SegmentedControl,
+  SegmentedControlIndicator,
+  SegmentedControlItem,
+} from "@ui-sdk/react/segmented-control"
 
 export type StatusScope = "active" | "done" | "all"
 
@@ -8,6 +12,10 @@ const STATUS_OPTIONS: { value: StatusScope; label: string }[] = [
   { value: "all", label: "All" },
 ]
 
+function isStatusScope(value: string | null): value is StatusScope {
+  return STATUS_OPTIONS.some((option) => option.value === value)
+}
+
 export function StatusFilter({
   value,
   onChange,
@@ -16,31 +24,24 @@ export function StatusFilter({
   onChange: (value: StatusScope) => void
 }) {
   return (
-    <div
-      role="radiogroup"
+    <SegmentedControl
       aria-label="Status"
-      className="inline-flex items-center gap-0.5 rounded-[10px] border bg-popover p-0.5"
+      value={value}
+      onValueChange={(next) => {
+        if (isStatusScope(next)) onChange(next)
+      }}
+      className="rounded-[10px] bg-popover"
     >
-      {STATUS_OPTIONS.map((option) => {
-        const active = value === option.value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "inline-flex items-center rounded-[7px] border px-3 py-1.5 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              active
-                ? "border-border bg-muted text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
+      <SegmentedControlIndicator className="rounded-[7px] border-border bg-muted" />
+      {STATUS_OPTIONS.map((option) => (
+        <SegmentedControlItem
+          key={option.value}
+          value={option.value}
+          className="rounded-[7px] text-[13px]"
+        >
+          {option.label}
+        </SegmentedControlItem>
+      ))}
+    </SegmentedControl>
   )
 }

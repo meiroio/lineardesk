@@ -10,6 +10,8 @@ import {
   RiRefreshLine,
   RiTimeLine,
 } from "@remixicon/react"
+import { Button } from "@ui-sdk/react/button"
+import { Input, InputGroup } from "@ui-sdk/react/input"
 import { useEffect, useState } from "react"
 
 import { RequestPipeline, needsAttention } from "@/components/request-pipeline"
@@ -21,8 +23,6 @@ import { SeverityFilter } from "@/components/severity-filter"
 import { StatusFilter } from "@/components/status-filter"
 import type { StatusScope } from "@/components/status-filter"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Input } from "@/components/ui/input"
-import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -137,13 +137,8 @@ function Dashboard() {
     })
   }
 
-  const toggleSeverity = (priority: number) => {
-    setSeverityFilter((prev) => {
-      const next = new Set(prev)
-      if (next.has(priority)) next.delete(priority)
-      else next.add(priority)
-      return next
-    })
+  const changeSeverityFilter = (priorities: Set<number>) => {
+    setSeverityFilter(priorities)
     setPage(0)
   }
 
@@ -168,38 +163,36 @@ function Dashboard() {
               : "Your requests, from first report to resolution."
       }
       topBarContent={
-        <label className="relative block w-32 sm:w-56">
+        <InputGroup className="h-9 w-32 rounded-[10px] bg-popover text-xs sm:w-56">
           <RiSearchLine
-            className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground"
+            className="size-3.5 text-muted-foreground"
             aria-hidden
           />
           <Input
+            type="search"
             aria-label="Search requests on this page"
             placeholder="Search this page…"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-9 rounded-[10px] border-border bg-popover pl-9 text-xs"
+            onValueChange={setSearch}
           />
-        </label>
+        </InputGroup>
       }
       actions={
         <>
           {canWrite ? (
-            <Link to="/requests/new" className={buttonVariants()}>
+            <Button data-variant="solid" render={<Link to="/requests/new" />}>
               <RiAddLine aria-hidden />
               New request
-            </Link>
+            </Button>
           ) : null}
           <Button
-            variant="outline"
-            size="icon"
             aria-label="Sign out"
-            onClick={() => {
-              void Promise.resolve(auth.signOut()).finally(() => {
+            onClick={() =>
+              Promise.resolve(auth.signOut()).finally(() => {
                 queryClient.clear()
                 return navigate({ to: "/login" })
               })
-            }}
+            }
           >
             <RiLogoutBoxRLine aria-hidden />
           </Button>
@@ -233,10 +226,10 @@ function Dashboard() {
           </EmptyHeader>
           {canWrite ? (
             <EmptyContent>
-              <Link to="/requests/new" className={buttonVariants()}>
+              <Button data-variant="solid" render={<Link to="/requests/new" />}>
                 <RiAddLine aria-hidden />
                 New request
-              </Link>
+              </Button>
             </EmptyContent>
           ) : null}
         </Empty>
@@ -282,7 +275,7 @@ function Dashboard() {
               />
               <SeverityFilter
                 selected={severityFilter}
-                onToggle={toggleSeverity}
+                onChange={changeSeverityFilter}
               />
             </div>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -322,16 +315,14 @@ function Dashboard() {
                   </span>
                   <div className="flex gap-2">
                     <Button
-                      variant="outline"
-                      size="sm"
+                      data-size="sm"
                       disabled={isPlaceholderData || currentPage === 0}
                       onClick={() => setPage(currentPage - 1)}
                     >
                       Previous
                     </Button>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      data-size="sm"
                       disabled={
                         isPlaceholderData || currentPage >= pageCount - 1
                       }
@@ -353,14 +344,14 @@ function Dashboard() {
                 : ""}
             </span>
             {statusScope === "active" ? (
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              <Button
+                data-variant="link"
+                className="gap-1 text-xs"
                 onClick={() => changeStatusScope("done")}
               >
-                Show closed requests{" "}
+                Show closed requests
                 <RiArrowRightSLine className="size-3.5" aria-hidden />
-              </button>
+              </Button>
             ) : null}
           </footer>
         </div>

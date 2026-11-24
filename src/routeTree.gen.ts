@@ -9,25 +9,25 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as RequestsNewRouteImport } from './routes/requests/new'
-import { Route as RequestsRequestIdRouteImport } from './routes/requests/$requestId'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as RequestsRequestIdRouteImport } from './routes/requests/$requestId'
+import { Route as RequestsNewRouteImport } from './routes/requests/new'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RequestsNewRoute = RequestsNewRouteImport.update({
-  id: '/requests/new',
-  path: '/requests/new',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSplatRoute = ApiSplatRouteImport.update({
+  id: '/api/$',
+  path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
@@ -35,9 +35,9 @@ const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
   path: '/requests/$requestId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiSplatRoute = ApiSplatRouteImport.update({
-  id: '/api/$',
-  path: '/api/$',
+const RequestsNewRoute = RequestsNewRouteImport.update({
+  id: '/requests/new',
+  path: '/requests/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -66,11 +66,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/login'
-    | '/api/$'
-    | '/requests/$requestId'
-    | '/requests/new'
+    '/' | '/login' | '/api/$' | '/requests/$requestId' | '/requests/new'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/login' | '/api/$' | '/requests/$requestId' | '/requests/new'
   id:
@@ -92,13 +88,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -106,11 +95,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/requests/new': {
-      id: '/requests/new'
-      path: '/requests/new'
-      fullPath: '/requests/new'
-      preLoaderRoute: typeof RequestsNewRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/$': {
+      id: '/api/$'
+      path: '/api/$'
+      fullPath: '/api/$'
+      preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/requests/$requestId': {
@@ -120,11 +116,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/$': {
-      id: '/api/$'
-      path: '/api/$'
-      fullPath: '/api/$'
-      preLoaderRoute: typeof ApiSplatRouteImport
+    '/requests/new': {
+      id: '/requests/new'
+      path: '/requests/new'
+      fullPath: '/requests/new'
+      preLoaderRoute: typeof RequestsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

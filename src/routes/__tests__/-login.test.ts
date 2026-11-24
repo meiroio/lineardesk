@@ -102,7 +102,7 @@ describe("login route UI", () => {
     const signInMagicLink = vi.fn(async () => ({}))
 
     renderLoginRoute({ signInMagicLink })
-    fireEvent.change(screen.getByLabelText(/work email/i), {
+    fireEvent.input(screen.getByLabelText(/work email/i), {
       target: { value: "person@example.com" },
     })
     fireEvent.click(

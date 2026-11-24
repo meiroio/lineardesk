@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { RiGoogleFill } from "@remixicon/react"
+import { Button } from "@ui-sdk/react/button"
+import { Field, FieldLabel } from "@ui-sdk/react/field"
+import { Input } from "@ui-sdk/react/input"
 import { useRef, useState } from "react"
 import type { ReactNode } from "react"
 
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -14,8 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import type { PortalAuthClient } from "@/lib/app-context"
 import { authClient } from "@/lib/auth-client"
 
@@ -196,7 +196,7 @@ export function InvitationAcceptance({
       }
     >
       <Button
-        type="button"
+        data-variant="solid"
         disabled={busy}
         onClick={() =>
           void submit(
@@ -208,8 +208,7 @@ export function InvitationAcceptance({
         Accept invitation
       </Button>
       <Button
-        type="button"
-        variant="secondary"
+        data-variant="secondary"
         disabled={busy}
         onClick={() => void submit(signOut, "Could not sign out. Try again.")}
       >
@@ -275,7 +274,7 @@ export function LoginScreen({
         </Alert>
       ) : null}
       <Button
-        type="button"
+        data-variant="solid"
         onClick={() => {
           setSocialError(false)
           void signInSocial({
@@ -288,7 +287,7 @@ export function LoginScreen({
           )
         }}
       >
-        <RiGoogleFill className="size-4" aria-hidden />
+        <RiGoogleFill aria-hidden />
         Continue with Google
       </Button>
       <form
@@ -318,16 +317,13 @@ export function LoginScreen({
           })
         }}
       >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="email">Work email</Label>
+        <Field name="email">
+          <FieldLabel>Work email</FieldLabel>
           <Input
-            id="email"
-            name="email"
             type="email"
             autoComplete="username"
             value={email}
-            onChange={(event) => {
-              const nextEmail = event.target.value
+            onValueChange={(nextEmail) => {
               emailRef.current = nextEmail
               magicLinkRequestIdRef.current += 1
               setEmail(nextEmail)
@@ -335,11 +331,12 @@ export function LoginScreen({
             }}
             required
           />
-        </div>
+        </Field>
         <Button
           type="submit"
-          variant="secondary"
+          data-variant="secondary"
           disabled={status === "sending"}
+          focusableWhenDisabled
         >
           {status === "sending" ? "Sending link..." : "Email me a sign-in link"}
         </Button>

@@ -10,6 +10,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react"
+import { createAgent } from "@ui-sdk/react/agent"
 import { createElement } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -34,6 +35,24 @@ vi.mock("../__root", async () => {
 })
 
 const NOW = "2026-01-01T00:00:00.000Z"
+
+let approveAgentSteps = false
+const agent = createAgent({
+  allow: (step) => !step.confirm || approveAgentSteps,
+})
+
+function onPageAgentLabels() {
+  const entries = agent
+    .snapshot()
+    .filter((entry) => !entry.offPage && entry.component !== "more")
+  for (const entry of entries) {
+    expect(
+      entry.label,
+      `${entry.component} ${entry.ref} has no name`
+    ).toBeTruthy()
+  }
+  return entries.map((entry) => entry.label)
+}
 
 describe("portal route smoke", () => {
   let context: AppRouterContext
@@ -244,6 +263,7 @@ describe("portal route smoke", () => {
   })
 
   afterEach(() => {
+    approveAgentSteps = false
     cleanup()
     context.queryClient.clear()
     vi.clearAllMocks()
@@ -286,7 +306,7 @@ describe("portal route smoke", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Filter by organization" })
     )
-    fireEvent.click(await screen.findByRole("button", { name: "Beta" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Beta" }))
     await waitFor(() =>
       expect(screen.queryByText("Existing CSV export failure")).toBeNull()
     )
@@ -303,7 +323,7 @@ describe("portal route smoke", () => {
     expect(
       await screen.findByRole("combobox", { name: "Assign request" })
     ).toBeTruthy()
-    fireEvent.click(screen.getByRole("combobox", { name: /^Severity:/ }))
+    fireEvent.click(screen.getByRole("combobox", { name: "Severity" }))
     const low = await screen.findByRole("option", { name: "Low" })
     fireEvent.pointerDown(low, { button: 0, pointerType: "mouse" })
     fireEvent.click(low)
@@ -313,6 +333,208 @@ describe("portal route smoke", () => {
     expect(
       screen.getByRole("link", { name: "Requests" }).getAttribute("href")
     ).toBe("/")
+  })
+
+  it("lets an agent find and change every dashboard filter", async () => {
+    renderPortal("/", context)
+    await screen.findByText("Existing CSV export failure")
+
+    const labels = onPageAgentLabels()
+    for (const label of [
+      "Search requests on this page",
+      "Filter by team",
+      "Status",
+      "Severity",
+      "New request",
+      "Sign out",
+    ]) {
+      expect(labels, `${label} is missing from the snapshot`).toContain(label)
+    }
+
+    const result = await agent.act({
+      steps: [
+        { ref: "Status", action: "setValue", args: ["Done"] },
+        { ref: "High", action: "setPressed", args: [true] },
+        { ref: "Filter by team", action: "setValue", args: ["Product"] },
+      ],
+    })
+    expect(result.ok, result.error?.message).toBe(true)
+    await waitFor(() =>
+      expect(fetchRequests).toHaveBeenLastCalledWith({
+        page: 0,
+        pageSize: 10,
+        status: "done",
+        severity: [2],
+        teamId: "team-product",
+      })
+    )
+
+    const search = await agent.act({
+      steps: [
+        {
+          ref: "Search requests on this page",
+          action: "setValue",
+          args: ["no such request"],
+        },
+      ],
+    })
+    expect(search.ok, search.error?.message).toBe(true)
+    expect(await screen.findByText("No matching requests")).toBeTruthy()
+  })
+
+  it("lets an agent fill and submit the new request form", async () => {
+    renderPortal("/requests/new", context)
+    await screen.findByRole("heading", { name: "New request" })
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Team" }).textContent
+      ).toContain("Base (BAS)")
+    )
+
+    const labels = onPageAgentLabels()
+    for (const label of [
+      "Title",
+      "Team",
+      "Severity",
+      "Expected behaviour",
+      "Current behaviour",
+      "Steps to reproduce",
+      "Submit request",
+    ]) {
+      expect(labels, `${label} is missing from the snapshot`).toContain(label)
+    }
+
+    const result = await agent.act({
+      steps: [
+        { ref: "Title", action: "setValue", args: ["Agent filed request"] },
+        { ref: "Team", action: "setValue", args: ["Product (PRD)"] },
+        { ref: "Severity", action: "setValue", args: ["Urgent"] },
+        {
+          ref: "Expected behaviour",
+          action: "setValue",
+          args: ["Exports finish."],
+        },
+        {
+          ref: "Current behaviour",
+          action: "setValue",
+          args: ["Exports time out."],
+        },
+        {
+          ref: "Steps to reproduce",
+          action: "setValue",
+          args: ["Export a large report."],
+        },
+        { ref: "Submit request", action: "press" },
+      ],
+    })
+    expect(result.ok, result.error?.message).toBe(true)
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith("/api/requests", {
+        title: "Agent filed request",
+        severity: "urgent",
+        teamId: "team-product",
+        expectedBehaviour: "Exports finish.",
+        currentBehaviour: "Exports time out.",
+        stepsToReproduce: "Export a large report.",
+        attachments: "",
+      })
+    )
+  })
+
+  it("lets an agent triage a request and needs a person to close it", async () => {
+    signInAsStaff()
+    vi.mocked(context.api.closeRequest).mockImplementation(async (id) => {
+      const request = requests.find((item) => item.id === id)!
+      return {
+        request: {
+          ...request,
+          linearStateType: "completed",
+          linearStateName: "Done",
+        },
+      }
+    })
+    renderPortal("/requests/request-1", context)
+    const panel = await screen.findByRole("region", {
+      name: "Request assignment",
+    })
+    await within(panel).findByText("Jan Dvořák", {
+      ignore: '[role="option"]',
+    })
+
+    const labels = onPageAgentLabels()
+    for (const label of [
+      "Severity",
+      "Assign request",
+      "Reply",
+      "Post reply",
+      "Close request",
+    ]) {
+      expect(labels, `${label} is missing from the snapshot`).toContain(label)
+    }
+
+    const triage = await agent.act({
+      steps: [
+        { ref: "Severity", action: "setValue", args: ["Low"] },
+        { ref: "Assign request", action: "setValue", args: ["Mia Novak"] },
+      ],
+    })
+    expect(triage.ok, triage.error?.message).toBe(true)
+    await waitFor(() => {
+      expect(updateRequestSeverity).toHaveBeenCalledWith("request-1", 4)
+      expect(context.api.updateRequestAssignee).toHaveBeenCalledWith(
+        "request-1",
+        "mia"
+      )
+    })
+
+    const close = {
+      steps: [
+        { ref: "Close request", action: "press", args: ["Mark resolved"] },
+      ],
+    }
+    expect((await agent.act(close)).ok).toBe(false)
+    expect(context.api.closeRequest).not.toHaveBeenCalled()
+
+    approveAgentSteps = true
+    const approved = await agent.act(close)
+    expect(approved.ok, approved.error?.message).toBe(true)
+    await waitFor(() =>
+      expect(context.api.closeRequest).toHaveBeenCalledWith(
+        "request-1",
+        "resolved"
+      )
+    )
+  })
+
+  it("keeps the close dialog open with a message when closing fails", async () => {
+    vi.mocked(context.api.closeRequest).mockRejectedValue(
+      new Error("Network failure")
+    )
+    renderPortal("/requests/request-1", context)
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Close request" })
+    )
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Close BAS-101?",
+    })
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Mark cancelled" })
+    )
+    expect(
+      await within(dialog).findByText(
+        "Could not close the request. Try again after a moment."
+      )
+    ).toBeTruthy()
+    expect(context.api.closeRequest).toHaveBeenCalledWith(
+      "request-1",
+      "canceled"
+    )
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep open" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    expect(
+      document.activeElement ===
+        screen.getByRole("button", { name: "Close request" })
+    ).toBe(true)
   })
 
   it("searches teams, resets pagination, and filters requests across pages", async () => {
@@ -329,12 +551,12 @@ describe("portal route smoke", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }))
     await screen.findByText("Showing 11–12 of 12")
     fireEvent.click(screen.getByRole("button", { name: "Filter by team" }))
-    const teamSearch = await screen.findByRole("textbox", {
+    const teamSearch = await screen.findByRole("combobox", {
       name: "Filter teams",
     })
-    fireEvent.change(teamSearch, { target: { value: "prd" } })
-    expect(screen.queryByRole("button", { name: "Base" })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Product" }))
+    fireEvent.input(teamSearch, { target: { value: "prd" } })
+    expect(screen.queryByRole("option", { name: "Base" })).toBeNull()
+    fireEvent.click(screen.getByRole("option", { name: "Product" }))
     await waitFor(() =>
       expect(fetchRequests).toHaveBeenLastCalledWith({
         page: 0,
@@ -349,7 +571,7 @@ describe("portal route smoke", () => {
     )
     expect(screen.getByText("Team request 12")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Filter by team" }))
-    fireEvent.click(await screen.findByRole("button", { name: "All teams" }))
+    fireEvent.click(await screen.findByRole("option", { name: "All teams" }))
     await screen.findByText("Showing 1–10 of 12")
     expect(screen.getByText("Team request 1")).toBeTruthy()
   })
@@ -403,8 +625,9 @@ describe("portal route smoke", () => {
     fireEvent.pointerDown(mia, { button: 0, pointerType: "mouse" })
     fireEvent.click(mia)
     await within(panel).findByRole("alert")
-    expect(within(panel).getByText("Jan Dvořák")).toBeTruthy()
-    expect(within(panel).queryByText("Mia Novak")).toBeNull()
+    const outsideList = { ignore: '[role="option"]' }
+    expect(within(panel).getByText("Jan Dvořák", outsideList)).toBeTruthy()
+    expect(within(panel).queryByText("Mia Novak", outsideList)).toBeNull()
   })
 
   it("searches the current page by title or issue identifier and keeps pipeline counts scoped", async () => {
@@ -420,10 +643,10 @@ describe("portal route smoke", () => {
     )
     renderPortal("/", context)
     await screen.findByText("Webhook delivery is delayed")
-    const search = screen.getByRole("textbox", {
+    const search = screen.getByRole("searchbox", {
       name: "Search requests on this page",
     })
-    fireEvent.change(search, { target: { value: "webhook" } })
+    fireEvent.input(search, { target: { value: "webhook" } })
     expect(screen.queryByText("Existing CSV export failure")).toBeNull()
     expect(screen.getByText("Webhook delivery is delayed")).toBeTruthy()
     expect(
@@ -436,12 +659,12 @@ describe("portal route smoke", () => {
     )
     expect(pipeline.getAllByText("1")).toHaveLength(2)
     expect(pipeline.getByText("0")).toBeTruthy()
-    fireEvent.change(search, { target: { value: "bas-101" } })
+    fireEvent.input(search, { target: { value: "bas-101" } })
     expect(screen.getByText("Existing CSV export failure")).toBeTruthy()
     expect(screen.queryByText("Webhook delivery is delayed")).toBeNull()
-    fireEvent.change(search, { target: { value: "no match" } })
+    fireEvent.input(search, { target: { value: "no match" } })
     expect(screen.getByText("No matching requests")).toBeTruthy()
-    fireEvent.change(search, { target: { value: "" } })
+    fireEvent.input(search, { target: { value: "" } })
     expect(screen.getByText("Existing CSV export failure")).toBeTruthy()
     expect(screen.getByText("Webhook delivery is delayed")).toBeTruthy()
   })
@@ -465,7 +688,7 @@ describe("portal route smoke", () => {
       await screen.findByRole("heading", { name: "New request" })
     ).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText("Title"), {
+    fireEvent.input(screen.getByLabelText("Title"), {
       target: { value: "Smoke flow CSV export failure" },
     })
     const team = screen.getByRole("combobox", { name: "Team" })
@@ -477,19 +700,17 @@ describe("portal route smoke", () => {
     fireEvent.pointerDown(product, { button: 0, pointerType: "mouse" })
     fireEvent.click(product)
     expect(team.textContent).toContain("Product (PRD)")
-    fireEvent.click(screen.getByLabelText("High"))
-    fireEvent.change(screen.getByLabelText("Expected behaviour"), {
+    fireEvent.click(screen.getByRole("radio", { name: "High" }))
+    fireEvent.input(screen.getByLabelText("Expected behaviour"), {
       target: { value: "The CSV export downloads." },
     })
-    fireEvent.change(screen.getByLabelText("Current behaviour"), {
+    fireEvent.input(screen.getByLabelText("Current behaviour"), {
       target: { value: "The export returns a 500." },
     })
     fireEvent.drop(screen.getByText("Drop screenshots here or"), {
-      dataTransfer: {
-        files: [
-          new File(["screenshot"], "export-error.png", { type: "image/png" }),
-        ],
-      },
+      dataTransfer: droppedFiles(
+        new File(["screenshot"], "export-error.png", { type: "image/png" })
+      ),
     })
     await waitFor(() => {
       expect(uploadImage).toHaveBeenCalledWith(
@@ -497,7 +718,7 @@ describe("portal route smoke", () => {
       )
       expect(screen.getByRole("img", { name: "export-error.png" })).toBeTruthy()
     })
-    fireEvent.change(screen.getByLabelText("Steps to reproduce"), {
+    fireEvent.input(screen.getByLabelText("Steps to reproduce"), {
       target: { value: "Open Reports and click Export CSV." },
     })
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }))
@@ -529,13 +750,13 @@ describe("portal route smoke", () => {
       "/api/requests/request-2/assets?url=https%3A%2F%2Fuploads.linear.app%2Fexport-error.png"
     )
 
-    fireEvent.change(screen.getByLabelText("Reply"), {
+    fireEvent.input(screen.getByLabelText("Reply"), {
       target: { value: "More evidence" },
     })
     fireEvent.drop(screen.getByText("Drop screenshots here or"), {
-      dataTransfer: {
-        files: [new File(["screenshot"], "reply.png", { type: "image/png" })],
-      },
+      dataTransfer: droppedFiles(
+        new File(["screenshot"], "reply.png", { type: "image/png" })
+      ),
     })
     await waitFor(() => {
       expect(
@@ -556,11 +777,9 @@ describe("portal route smoke", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
     fireEvent.drop(screen.getAllByText("Drop screenshots here or")[0], {
-      dataTransfer: {
-        files: [
-          new File(["screenshot"], "updated-view.png", { type: "image/png" }),
-        ],
-      },
+      dataTransfer: droppedFiles(
+        new File(["screenshot"], "updated-view.png", { type: "image/png" })
+      ),
     })
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "updated-view.png" })).toBeTruthy()
@@ -579,7 +798,7 @@ describe("portal route smoke", () => {
     expect(screen.getByRole("img", { name: "updated-view.png" })).toBeTruthy()
 
     // Severity and assignee are staff decisions; customers only see them.
-    expect(screen.queryByRole("combobox", { name: /^Severity:/ })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Severity" })).toBeNull()
     expect(
       screen.queryByRole("combobox", { name: "Assign request" })
     ).toBeNull()
@@ -766,5 +985,17 @@ function makeRequest(
     slackChannelId: null,
     slackMessageTs: null,
     ...input,
+  }
+}
+
+function droppedFiles(...files: File[]) {
+  return {
+    files,
+    types: ["Files"],
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+    })),
   }
 }

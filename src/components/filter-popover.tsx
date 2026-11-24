@@ -1,18 +1,23 @@
 import { useState } from "react"
-import { Popover } from "@base-ui/react/popover"
 import type { RemixiconComponentType } from "@remixicon/react"
+import { RiSearchLine, RiStackLine } from "@remixicon/react"
+import { Button } from "@ui-sdk/react/button"
 import {
-  RiArrowDownSLine,
-  RiCheckLine,
-  RiSearchLine,
-  RiStackLine,
-} from "@remixicon/react"
-
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIcon,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxTrigger,
+  ComboboxValue,
+} from "@ui-sdk/react/combobox"
 
 export type FilterOption = { id: string; name: string; key?: string }
+
+const ALL = "all"
 
 /**
  * Searchable single-select filter. The empty id is reserved for the "All …"
@@ -37,127 +42,112 @@ export function FilterPopover({
   status?: "pending" | "error" | "ready"
   onRetry?: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const allOptions: FilterOption[] = [
-    { id: "", name: `All ${pluralNoun}` },
-    ...options,
-  ]
-  const selected = allOptions.find((option) => option.id === value)
-  const visible = allOptions.filter((option) =>
-    `${option.name} ${option.key ?? ""}`
-      .toLowerCase()
-      .includes(search.toLowerCase().trim())
-  )
+  const [button, setButton] = useState<HTMLButtonElement | null>(null)
+  const [query, setQuery] = useState("")
+  const allLabel = `All ${pluralNoun}`
+  const allOptions = [{ id: ALL, name: allLabel, key: undefined }, ...options]
+  const labelOf = (id: string) =>
+    allOptions.find((option) => option.id === id)?.name ?? allLabel
+
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) setSearch("")
-      }}
-    >
-      <Popover.Trigger
-        aria-label={`Filter by ${noun}`}
-        className="flex h-9 max-w-56 items-center gap-2 rounded-[10px] border bg-popover px-3 text-[13px] font-medium"
+    <div className="flex items-center gap-2">
+      <Combobox
+        value={value || ALL}
+        onValueChange={(next) => onChange(!next || next === ALL ? "" : next)}
+        itemToLabel={labelOf}
+        query={query}
+        onQueryChange={setQuery}
+        onOpenChange={(open) => {
+          if (open) setQuery("")
+        }}
+        onOpenChangeComplete={(open) => {
+          if (!open) button?.focus()
+        }}
+        status={
+          status === "pending"
+            ? "loading"
+            : status === "error"
+              ? "error"
+              : "idle"
+        }
       >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="truncate">{selected?.name ?? `Selected ${noun}`}</span>
-        <RiArrowDownSLine
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner sideOffset={8} align="start" className="z-50">
-          <Popover.Popup className="w-[260px] max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
-            <Popover.Title className="sr-only">
-              Filter {pluralNoun}
-            </Popover.Title>
-            <div className="relative border-b pb-2">
-              <RiSearchLine
-                className="pointer-events-none absolute top-2.5 left-2.5 size-3.5 text-muted-foreground"
-                aria-hidden
-              />
-              <Input
-                autoFocus
-                aria-label={`Filter ${pluralNoun}`}
-                placeholder={`Filter ${pluralNoun}…`}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="h-9 rounded-md border-0 bg-transparent pl-8 text-[13px]"
-              />
-            </div>
-            {status === "pending" ? (
-              <p role="status" className="p-3 text-xs text-muted-foreground">
-                Loading {pluralNoun}…
-              </p>
-            ) : status === "error" ? (
-              <div className="p-3 text-xs">
-                <p role="alert">Could not load {pluralNoun}.</p>
-                {onRetry ? (
-                  <Button variant="ghost" size="sm" onClick={onRetry}>
-                    Retry
-                  </Button>
-                ) : null}
-              </div>
+        <ComboboxTrigger
+          ref={setButton}
+          aria-label={`Filter by ${noun}`}
+          className="h-9 max-w-56 min-w-40 justify-start rounded-[10px] bg-popover text-[13px]"
+        >
+          <span className="flex items-center text-muted-foreground" aria-hidden>
+            {value ? (
+              <Icon className="size-3.5" />
             ) : (
-              <div className="max-h-64 overflow-y-auto pt-1">
-                {visible.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-label={option.name}
-                    aria-pressed={value === option.id}
-                    onClick={() => {
-                      onChange(option.id)
-                      setOpen(false)
-                      setSearch("")
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted",
-                      value === option.id && "bg-muted"
-                    )}
-                  >
-                    {option.id ? (
-                      <Icon
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                        aria-hidden
-                      />
-                    ) : (
-                      <RiStackLine
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                        aria-hidden
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {option.name}
-                    </span>
-                    {option.key ? (
-                      <span className="font-mono text-[11px] text-muted-foreground">
-                        {option.key}
-                      </span>
-                    ) : null}
-                    <span className="size-3.5">
-                      {value === option.id ? (
-                        <RiCheckLine
-                          className="size-3.5 text-primary"
-                          aria-hidden
-                        />
-                      ) : null}
-                    </span>
-                  </button>
-                ))}
-                {visible.length === 0 ? (
-                  <p className="p-3 text-xs text-muted-foreground">
-                    No {pluralNoun} found.
-                  </p>
-                ) : null}
-              </div>
+              <RiStackLine className="size-3.5" />
             )}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+          </span>
+          <span className="flex-1 truncate text-start">
+            <ComboboxValue>{(state) => state.label || allLabel}</ComboboxValue>
+          </span>
+        </ComboboxTrigger>
+        <ComboboxContent
+          anchor={button}
+          align="start"
+          sideOffset={8}
+          className="w-[260px] max-w-[calc(100vw-2rem)] p-1.5"
+        >
+          <div className="flex items-center gap-2 border-b px-2 pb-1.5">
+            <RiSearchLine
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <ComboboxInput
+              autoFocus
+              aria-label={`Filter ${pluralNoun}`}
+              placeholder={`Filter ${pluralNoun}…`}
+              className="h-8 border-0 bg-transparent px-0 text-[13px] focus-visible:outline-none"
+            />
+          </div>
+          <ComboboxEmpty>
+            {status === "pending"
+              ? `Loading ${pluralNoun}…`
+              : status === "error"
+                ? `Could not load ${pluralNoun}.`
+                : `No ${pluralNoun} found.`}
+          </ComboboxEmpty>
+          <ComboboxList className="max-h-64 overflow-y-auto pt-1">
+            {allOptions.map((option) => (
+              <ComboboxItem
+                key={option.id}
+                value={option.id}
+                label={option.name}
+                keywords={option.key ? [option.key] : undefined}
+                className="text-[13px]"
+              >
+                <ComboboxItemIcon>
+                  {option.id === ALL ? (
+                    <RiStackLine className="size-3.5 text-muted-foreground" />
+                  ) : (
+                    <Icon className="size-3.5 text-muted-foreground" />
+                  )}
+                </ComboboxItemIcon>
+                <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                {option.key ? (
+                  <span
+                    aria-hidden
+                    className="font-mono text-[11px] text-muted-foreground"
+                  >
+                    {option.key}
+                  </span>
+                ) : null}
+                <ComboboxItemIndicator />
+              </ComboboxItem>
+            ))}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+      {status === "error" && onRetry ? (
+        <Button data-variant="ghost" data-size="sm" onClick={onRetry}>
+          Retry {pluralNoun}
+        </Button>
+      ) : null}
+    </div>
   )
 }
